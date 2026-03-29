@@ -1447,39 +1447,64 @@ function StorefrontPage({ users, allProducts, allOrders, setAllOrders, cart, set
 
 // ─── STOREFRONT ───────────────────────────────────────────────────────────────
 function Storefront({ storeUser, products, onOrderPlaced, cart, setCart, setPage, customer }) {
-  const [sel, setSel] = useState(null);
-  const [qty, setQty] = useState(1);
+  const navigate = useNavigate();
+  const [sel,    setSel]    = useState(null);  // selected product for detail modal
+  const [qty,    setQty]    = useState(1);
+  const [qrPay,  setQrPay]  = useState(null);  // { product, qty, amount } for QR modal
+  const [qrDone, setQrDone] = useState(false); // success screen
 
   const addCart = (p) => {
     setCart(c=>{ const e=c.find(x=>x.id===p.id); return e?c.map(x=>x.id===p.id?{...x,qty:x.qty+qty}:x):[...c,{...p,qty}]; });
     setSel(null);
   };
 
-  const buyNow = async (p, q=1) => {
-    if (!storeUser?.upi_id && !storeUser?.store_name) { alert("This store hasn't set up payments yet."); return; }
-    const orderId = `BL-${Date.now().toString(36).toUpperCase()}`;
-    const amount  = p.price * q;
-    const items   = [{...p, qty:q}];
+  // ── Open UPI QR modal ─────────────────────────────────────────────────────
+  const openQR = (p, q=1) => {
+    if (!storeUser?.upi_id) { alert("This store hasn't set up UPI payments yet."); return; }
+    setQrPay({ product:p, qty:q, amount:p.price*q });
+    setSel(null);
+  };
 
+  // ── After customer confirms they've paid ──────────────────────────────────
+  const confirmQrPaid = async () => {
+    const orderId = `BL-${Date.now().toString(36).toUpperCase()}`;
+    const newOrder = {
+      id:orderId, store_id:storeUser.id,
+      customer_name:customer?.name||"Customer",
+      customer_phone:customer?.phone||"",
+      customer_id:customer?.id||null,
+      items:[{...qrPay.product, qty:qrPay.qty}],
+      amount:qrPay.amount,
+      status:"confirmed", proof:"",
+      upi_ref:"", order_date:today(),
+    };
+    if (storeUser.id!==DEMO_ID) await supa.insert("bloom_orders", newOrder);
+    onOrderPlaced(storeUser.id, {...newOrder, date:today()});
+    if (storeUser.mailersend_key&&storeUser.email) {
+      await sendOrderEmail({ mailerKey:storeUser.mailersend_key, toEmail:storeUser.email, toName:storeUser.name, order:{...newOrder,date:today()}, storeName:storeUser.store_name });
+    }
+    setQrDone(true);
+    setTimeout(() => { setQrPay(null); setQrDone(false); }, 3500);
+  };
+
+  // ── Cashfree for card/wallet ───────────────────────────────────────────────
+  const payWithCard = async (p, q=1) => {
+    const orderId = `BL-${Date.now().toString(36).toUpperCase()}`;
     await startCashfreePayment({
-      amount,
-      orderId,
-      customerName:  customer?.name  || "Customer",
-      customerEmail: customer?.email || "customer@bloom.store",
-      customerPhone: customer?.phone || "9999999999",
-      storeName:     storeUser.store_name,
-      storeSlug:     storeUser.store_slug,
-      onSuccess: async (paymentDetails) => {
-        // Payment verified by Cashfree — save confirmed order
+      amount:p.price*q, orderId,
+      customerName:customer?.name||"Customer",
+      customerEmail:customer?.email||"customer@bloom.store",
+      customerPhone:customer?.phone||"9999999999",
+      storeName:storeUser.store_name, storeSlug:storeUser.store_slug,
+      onSuccess: async (pd) => {
         const newOrder = {
           id:orderId, store_id:storeUser.id,
           customer_name:customer?.name||"Customer",
           customer_phone:customer?.phone||"",
           customer_id:customer?.id||null,
-          items, amount,
-          status:"confirmed",
-          proof:"", upi_ref: String(paymentDetails?.paymentAmount||""),
-          order_date:today(),
+          items:[{...p,qty:q}], amount:p.price*q,
+          status:"confirmed", proof:"",
+          upi_ref:String(pd?.paymentAmount||""), order_date:today(),
         };
         if (storeUser.id!==DEMO_ID) await supa.insert("bloom_orders", newOrder);
         onOrderPlaced(storeUser.id, {...newOrder, date:today()});
@@ -1488,14 +1513,21 @@ function Storefront({ storeUser, products, onOrderPlaced, cart, setCart, setPage
         }
         setSel(null);
       },
-      onFail: (msg) => alert(`Payment failed: ${msg}`),
+      onFail:(msg)=>alert(`Payment failed: ${msg}`),
     });
   };
 
   if (!storeUser) return <div style={{padding:60,textAlign:"center",color:"var(--ink-soft)"}}>Store not found.</div>;
 
+  // Build UPI url + QR for current qrPay
+  const upiUrl = qrPay && storeUser.upi_id
+    ? buildUpiUrl({ upiId:storeUser.upi_id, name:storeUser.store_name, amount:qrPay.amount, note:qrPay.product.name })
+    : null;
+  const qrImgUrl = upiUrl ? buildQrUrl(upiUrl) : null;
+
   return (
     <div style={{minHeight:"100vh"}}>
+      {/* Store hero */}
       <div style={{background:"linear-gradient(135deg,var(--pink) 0%,var(--yellow) 50%,var(--blue) 100%)",padding:"56px 6vw",display:"flex",alignItems:"center",gap:32,flexWrap:"wrap",position:"relative",overflow:"hidden"}}>
         <div style={{position:"absolute",right:30,top:-30,width:160,height:160,borderRadius:"50%",background:"rgba(255,255,255,0.25)",filter:"blur(35px)",pointerEvents:"none"}}/>
         <BloomSphere size={84}/>
@@ -1508,14 +1540,18 @@ function Storefront({ storeUser, products, onOrderPlaced, cart, setCart, setPage
           </div>
         </div>
       </div>
+
       {!storeUser.upi_id&&<div style={{margin:"20px 6vw 0",background:"#FFF3CD",border:"1px solid var(--yellow-deep)",borderRadius:12,padding:"12px 18px",fontSize:13,color:"#7D5A00",fontWeight:600}}>⚠️ Store is not accepting payments yet.</div>}
+
+      {/* Products grid */}
       <div style={{padding:"44px 6vw"}}>
         <h2 style={{fontSize:38,marginBottom:28}}>Shop the <em style={{color:"var(--pink-btn)"}}>Collection</em></h2>
         {products.length===0
           ? <p style={{color:"var(--ink-soft)",textAlign:"center",padding:"40px 0"}}>No products listed yet.</p>
           : <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(270px,1fr))",gap:26}}>
               {products.map((p,i)=>(
-                <div key={p.id} className="card fadeUp" style={{overflow:"hidden",cursor:"pointer",transition:"transform 0.22s,box-shadow 0.22s",animation:`fadeUp 0.4s ease ${i*0.07}s both`}}
+                <div key={p.id} className="card fadeUp"
+                  style={{overflow:"hidden",cursor:"pointer",transition:"transform 0.22s,box-shadow 0.22s",animation:`fadeUp 0.4s ease ${i*0.07}s both`}}
                   onMouseEnter={e=>{e.currentTarget.style.transform="translateY(-5px)";e.currentTarget.style.boxShadow="var(--shadow)";}}
                   onMouseLeave={e=>{e.currentTarget.style.transform="none";e.currentTarget.style.boxShadow="var(--shadow-sm)";}}
                   onClick={()=>{setSel(p);setQty(1);}}>
@@ -1527,7 +1563,10 @@ function Storefront({ storeUser, products, onOrderPlaced, cart, setCart, setPage
                     <h4 style={{fontSize:16,marginBottom:11}}>{p.name}</h4>
                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                       <span style={{fontSize:24,fontFamily:"Playfair Display",fontWeight:700,color:"var(--pink-btn)"}}>₹{p.price.toLocaleString()}</span>
-                      <button className="btn-pink" style={{padding:"9px 18px",fontSize:13,borderRadius:10}} onClick={e=>{e.stopPropagation();addCart(p);}}>Add to Cart</button>
+                      <div style={{display:"flex",gap:8}} onClick={e=>e.stopPropagation()}>
+                        <button className="btn-pink" style={{padding:"9px 14px",fontSize:12,borderRadius:10}} onClick={()=>addCart(p)}>+ Cart</button>
+                        <button className="btn-green" style={{padding:"9px 14px",fontSize:12,borderRadius:10}} onClick={()=>openQR(p,1)}>📱 Pay</button>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1535,9 +1574,11 @@ function Storefront({ storeUser, products, onOrderPlaced, cart, setCart, setPage
             </div>
         }
       </div>
+
+      {/* ── Product Detail Modal ── */}
       {sel&&(
         <div style={{position:"fixed",inset:0,background:"rgba(45,31,43,0.55)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:200}} onClick={()=>setSel(null)}>
-          <div className="card pop-in" style={{width:"100%",maxWidth:680,margin:16,overflow:"hidden"}} onClick={e=>e.stopPropagation()}>
+          <div className="card pop-in" style={{width:"100%",maxWidth:700,margin:16,overflow:"hidden",maxHeight:"92vh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr"}}>
               <img src={sel.img} alt={sel.name} style={{width:"100%",minHeight:300,objectFit:"cover",display:"block"}}/>
               <div style={{padding:32,display:"flex",flexDirection:"column",gap:18}}>
@@ -1556,11 +1597,102 @@ function Storefront({ storeUser, products, onOrderPlaced, cart, setCart, setPage
                   </div>
                 </div>
                 <div style={{display:"flex",flexDirection:"column",gap:9}}>
-                  <button className="btn-pink" style={{padding:13,borderRadius:12}} onClick={()=>addCart(sel)}>🛍 Add to Cart · ₹{(sel.price*qty).toLocaleString()}</button>
-                  <button className="btn-green" style={{padding:13,borderRadius:12}} onClick={()=>buyNow(sel,qty)}>💳 Pay Now · ₹{(sel.price*qty).toLocaleString()}</button>
+                  <button className="btn-pink" style={{padding:13,borderRadius:12}} onClick={()=>addCart(sel)}>
+                    🛍 Add to Cart · ₹{(sel.price*qty).toLocaleString()}
+                  </button>
+                  {/* QR / UPI pay */}
+                  {storeUser.upi_id&&(
+                    <button className="btn-green" style={{padding:13,borderRadius:12}} onClick={()=>openQR(sel,qty)}>
+                      📱 Pay with UPI · ₹{(sel.price*qty).toLocaleString()}
+                    </button>
+                  )}
+                  {/* Card / wallet via Cashfree */}
+                  <button className="btn-yellow" style={{padding:13,borderRadius:12,fontSize:13}} onClick={()=>payWithCard(sel,qty)}>
+                    💳 Pay with Card / Wallet
+                  </button>
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── UPI QR Modal ── */}
+      {qrPay&&upiUrl&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(45,31,43,0.65)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:300,backdropFilter:"blur(6px)"}}
+          onClick={()=>{if(!qrDone){setQrPay(null);}}}>
+          <div className="card pop-in" style={{width:"100%",maxWidth:420,margin:16,overflow:"hidden"}} onClick={e=>e.stopPropagation()}>
+
+            {!qrDone ? (
+              <>
+                {/* Header */}
+                <div style={{background:"linear-gradient(135deg,var(--pink) 0%,var(--yellow) 60%,var(--blue) 100%)",padding:"24px 28px 20px",textAlign:"center"}}>
+                  <div style={{display:"flex",justifyContent:"center",marginBottom:8}}><BloomSphere size={44}/></div>
+                  <p style={{fontSize:13,color:"var(--ink-soft)"}}>Pay <strong>{storeUser.store_name}</strong></p>
+                  <div style={{fontSize:38,fontFamily:"Playfair Display",fontWeight:700}}>₹{qrPay.amount.toLocaleString()}</div>
+                  <p style={{fontSize:12,color:"var(--ink-soft)",marginTop:4}}>{qrPay.product.name} × {qrPay.qty}</p>
+                </div>
+
+                <div style={{padding:"24px 28px 28px",textAlign:"center"}}>
+                  {/* Big scannable QR */}
+                  <p style={{fontSize:11,fontWeight:700,letterSpacing:"0.07em",color:"var(--ink-soft)",marginBottom:12,textTransform:"uppercase"}}>
+                    📱 Scan with GPay · PhonePe · Paytm · Any UPI
+                  </p>
+                  <div style={{display:"inline-block",padding:14,background:"#fff",borderRadius:18,border:"2px solid var(--border-mid)",boxShadow:"var(--shadow)"}}>
+                    <img src={qrImgUrl} alt="UPI QR" width={220} height={220} style={{display:"block",borderRadius:8}}/>
+                  </div>
+
+                  {/* UPI deep link buttons */}
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,margin:"20px 0"}}>
+                    {UPI_APPS.slice(0,3).map(app=>(
+                      <a key={app.name} href={app.url(upiUrl)}
+                        style={{display:"flex",flexDirection:"column",alignItems:"center",gap:5,background:"var(--surface)",border:"1.5px solid var(--border-mid)",borderRadius:12,padding:"12px 8px",textDecoration:"none",color:"var(--ink-soft)",fontSize:11,fontWeight:700,transition:"all 0.2s"}}
+                        onMouseEnter={e=>{e.currentTarget.style.background="var(--pink)";e.currentTarget.style.color="var(--pink-btn-h)";}}
+                        onMouseLeave={e=>{e.currentTarget.style.background="var(--surface)";e.currentTarget.style.color="var(--ink-soft)";}}>
+                        <span style={{fontSize:24}}>{app.emoji}</span>
+                        {app.name}
+                      </a>
+                    ))}
+                  </div>
+
+                  {/* UPI ID copy */}
+                  <div style={{background:"var(--surface)",borderRadius:12,padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20}}>
+                    <div style={{textAlign:"left"}}>
+                      <p style={{fontSize:10,fontWeight:700,color:"var(--ink-soft)",letterSpacing:"0.06em",marginBottom:2}}>UPI ID</p>
+                      <p style={{fontSize:14,fontWeight:700,fontFamily:"monospace"}}>{storeUser.upi_id}</p>
+                    </div>
+                    <button onClick={()=>navigator.clipboard.writeText(storeUser.upi_id)}
+                      style={{background:"var(--pink)",border:"none",borderRadius:9,padding:"7px 13px",cursor:"pointer",fontSize:12,fontWeight:700,color:"var(--pink-btn-h)"}}>
+                      Copy
+                    </button>
+                  </div>
+
+                  {/* Confirm paid button */}
+                  <button className="btn-green" style={{width:"100%",padding:14,borderRadius:12,fontSize:15}} onClick={confirmQrPaid}>
+                    ✓ I've Paid — Confirm Order
+                  </button>
+                  <button onClick={()=>setQrPay(null)} style={{width:"100%",background:"none",border:"none",marginTop:8,cursor:"pointer",fontSize:13,color:"var(--ink-soft)",padding:6}}>
+                    Cancel
+                  </button>
+                </div>
+              </>
+            ) : (
+              /* Success */
+              <div style={{padding:"44px 36px",textAlign:"center"}}>
+                <div style={{width:80,height:80,borderRadius:"50%",background:"var(--green-bg)",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 18px",animation:"pulse 1.5s ease infinite"}}>
+                  <svg width={40} height={40} viewBox="0 0 24 24" fill="none" stroke="var(--green)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="20 6 9 17 4 12" strokeDasharray="60" strokeDashoffset="60" style={{animation:"checkDraw 0.5s ease forwards 0.1s"}}/>
+                  </svg>
+                </div>
+                <h3 style={{fontSize:28,marginBottom:8}}><em style={{color:"var(--green)"}}>Order Confirmed!</em></h3>
+                <p style={{color:"var(--ink-soft)",fontSize:14,lineHeight:1.7}}>
+                  Thank you! Your order is confirmed at <strong>{storeUser.store_name}</strong> 🌸
+                </p>
+                <div style={{marginTop:18,background:"var(--green-bg)",borderRadius:12,padding:14}}>
+                  <p style={{fontSize:13,color:"var(--green)",fontWeight:700}}>₹{qrPay.amount.toLocaleString()} · {storeUser.upi_id}</p>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
