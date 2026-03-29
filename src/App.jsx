@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { Routes, Route, useNavigate, useParams, Navigate } from "react-router-dom";
 
 // ─── STYLES ──────────────────────────────────────────────────────────────────
 const FontLoader = () => (
@@ -747,7 +748,11 @@ function Dashboard({ user, products, orders, live }) {
           <span className="pill">Dashboard</span>
           <h2 style={{fontSize:38,marginTop:8}}>Hello, <em style={{color:"var(--pink-btn)"}}>{user?.store_name} 🌸</em></h2>
           <p style={{color:"var(--ink-soft)",marginTop:5,fontSize:13}}>
-            Store: <strong>bloom.store/{user?.store_slug}</strong>
+            Store URL: <strong>bloom-store-ochre.vercel.app/store/{user?.store_slug}</strong>
+            <button onClick={()=>{navigator.clipboard.writeText(`https://bloom-store-ochre.vercel.app/store/${user?.store_slug}`);alert("Store link copied! 🌸");}}
+              style={{marginLeft:10,background:"var(--pink)",border:"none",borderRadius:6,padding:"3px 10px",fontSize:11,fontWeight:700,color:"var(--pink-btn-h)",cursor:"pointer"}}>
+              Copy Link
+            </button>
           </p>
         </div>
         {live&&<div style={{display:"flex",alignItems:"center",gap:6,background:"var(--green-bg)",borderRadius:50,padding:"6px 14px"}}>
@@ -1191,6 +1196,7 @@ function Settings({ user, onUserUpdated }) {
 
 // ─── STORE DIRECTORY ──────────────────────────────────────────────────────────
 function StoreDirectory({ users, allProducts, setCurrentStore, setPage, setSession }) {
+  const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const filtered = users.filter(u=>u.store_name?.toLowerCase().includes(search.toLowerCase()));
   return (
@@ -1208,11 +1214,12 @@ function StoreDirectory({ users, allProducts, setCurrentStore, setPage, setSessi
         : <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:24}}>
             {filtered.map((u,i)=>{
               const prods = allProducts[u.id]||[];
+              const slug  = u.store_slug || u.storeSlug;
               return (
                 <div key={u.id} className="card fadeUp" style={{overflow:"hidden",cursor:"pointer",transition:"transform 0.2s,box-shadow 0.2s",animation:`fadeUp 0.4s ease ${i*0.07}s both`}}
                   onMouseEnter={e=>{e.currentTarget.style.transform="translateY(-4px)";e.currentTarget.style.boxShadow="var(--shadow)";}}
                   onMouseLeave={e=>{e.currentTarget.style.transform="none";e.currentTarget.style.boxShadow="var(--shadow-sm)";}}
-                  onClick={()=>{ setCurrentStore(u.id); setSession(s=>s||{role:"customer"}); setPage("storefront"); }}>
+                  onClick={()=> navigate(`/store/${slug}`)}>
                   <div style={{background:"linear-gradient(135deg,var(--pink),var(--yellow))",padding:"28px 24px 22px",position:"relative"}}>
                     <BloomSphere size={56}/>
                     {u.upi_id&&<span className="bdg-green" style={{position:"absolute",top:14,right:14}}>UPI Ready</span>}
@@ -1231,6 +1238,72 @@ function StoreDirectory({ users, allProducts, setCurrentStore, setPage, setSessi
           </div>
       }
     </div>
+  );
+}
+
+// ─── STOREFRONT PAGE — reads /store/:slug from URL ───────────────────────────
+// This is what customers land on when they visit a store link directly
+function StorefrontPage({ users, allProducts, allOrders, setAllOrders, cart, setCart }) {
+  const { slug }  = useParams();
+  const navigate  = useNavigate();
+  const [storeUser,   setStoreUser]   = useState(null);
+  const [products,    setProducts]    = useState([]);
+  const [loading,     setLoading]     = useState(true);
+  const [notFound,    setNotFound]    = useState(false);
+
+  useEffect(() => {
+    const load = async () => {
+      setLoading(true);
+      // First check in-memory users (covers demo store)
+      let user = users.find(u => u.store_slug === slug || u.storeSlug === slug);
+      let prods = user ? (allProducts[user.id] || []) : [];
+
+      // If not found in memory, fetch from Supabase
+      if (!user) {
+        const rows = await supa.select("bloom_users", `store_slug=eq.${slug}`);
+        if (rows.length === 0) { setNotFound(true); setLoading(false); return; }
+        user  = rows[0];
+        prods = await supa.select("bloom_products", `user_id=eq.${user.id}&order=created_at.asc`);
+      }
+
+      setStoreUser(user);
+      setProducts(prods);
+      setLoading(false);
+    };
+    load();
+  }, [slug]);
+
+  const handleOrderPlaced = async (storeId, order) => {
+    setAllOrders(prev => ({ ...prev, [storeId]: [order, ...(prev[storeId]||[])] }));
+  };
+
+  if (loading) return (
+    <div style={{minHeight:"80vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16}}>
+      <BloomSphere size={56}/>
+      <p style={{fontFamily:"Playfair Display",fontSize:18,color:"var(--pink-btn)"}}>Loading store…</p>
+    </div>
+  );
+
+  if (notFound) return (
+    <div style={{minHeight:"80vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16,textAlign:"center",padding:"0 24px"}}>
+      <div style={{fontSize:56}}>🌸</div>
+      <h2 style={{fontSize:32}}>Store not found</h2>
+      <p style={{color:"var(--ink-soft)",fontSize:15}}>The store <strong>{slug}</strong> doesn't exist yet.</p>
+      <button className="btn-pink" style={{marginTop:8,borderRadius:12,padding:"12px 28px"}} onClick={()=>navigate("/")}>
+        Back to Bloom
+      </button>
+    </div>
+  );
+
+  return (
+    <Storefront
+      storeUser={storeUser}
+      products={products}
+      onOrderPlaced={handleOrderPlaced}
+      cart={cart}
+      setCart={setCart}
+      setPage={()=>{}}
+    />
   );
 }
 
@@ -1438,9 +1511,9 @@ function Cart({ cart, setCart, storeUser, onOrderPlaced }) {
 
 // ─── ROOT APP ─────────────────────────────────────────────────────────────────
 export default function App() {
+  const navigate = useNavigate();
   // ── State — seeded instantly with demo data, Supabase loads in bg ─────────
-  const [page, setPage]               = useState("landing");
-  const [session, setSession]         = useState(null);   // { userId?, role }
+  const [session, setSession]         = useState(null);
   const [users, setUsers]             = useState([DEMO_USER]);
   const [allProducts, setAllProducts] = useState({ [DEMO_ID]: DEMO_PRODUCTS });
   const [allOrders, setAllOrders]     = useState({ [DEMO_ID]: DEMO_ORDERS });
@@ -1491,7 +1564,7 @@ export default function App() {
   const loadUserData = async (sess) => {
     if (!sess?.userId || sess.userId===DEMO_ID) {
       setSession(sess||{role:"business",userId:DEMO_ID});
-      setPage("dashboard"); return;
+      navigate("/dashboard"); return;
     }
     const rows = await supa.select("bloom_users",`id=eq.${sess.userId}`);
     if (rows.length===0) { Session.clear(); return; }
@@ -1504,13 +1577,13 @@ export default function App() {
     setAllProducts(prev=>({...prev,[u.id]:prods}));
     setAllOrders(prev=>({...prev,[u.id]:orders.map(o=>({...o,date:o.order_date}))}));
     setSession(sess);
-    setPage("dashboard");
+    navigate("/dashboard");
   };
 
   // ── Called on login/signup — saves session and loads data ────────────────
   const setSessionAndLoad = async (sess) => {
     Session.save(sess);
-    if (sess.role==="customer") { setSession(sess); setPage("directory"); return; }
+    if (sess.role==="customer") { setSession(sess); navigate("/directory"); return; }
     await loadUserData(sess);
   };
 
@@ -1529,15 +1602,13 @@ export default function App() {
 
   const logout = async () => {
     Session.clear();
-    setSession(null); setPage("landing"); setCart([]);
+    setSession(null); navigate("/"); setCart([]);
   };
 
   // ── Derived state ─────────────────────────────────────────────────────────
   const currentUser   = users.find(u=>u.id===session?.userId);
   const myProducts    = allProducts[currentUser?.id] || [];
   const myOrders      = allOrders[currentUser?.id]   || [];
-  const storeUser     = users.find(u=>u.id===currentStore) || DEMO_USER;
-  const storeProducts = allProducts[storeUser?.id]   || DEMO_PRODUCTS;
   const cartCount     = cart.reduce((s,i)=>s+i.qty,0);
 
   const setMyProducts = async (prods) => {
@@ -1545,36 +1616,91 @@ export default function App() {
   };
 
   const goToDemo = () => {
-    setCurrentStore(DEMO_ID);
     setSession(s=>s||{role:"customer"});
-    setPage("storefront");
+    navigate("/store/bloom-by-priya");
   };
 
-  // ── Render ─────────────────────────────────────────────────────────────────
-  const renderPage = () => {
-    if (session?.role==="business"&&currentUser) {
-      switch(page) {
-        case "dashboard": return <Dashboard user={currentUser} products={myProducts} orders={myOrders} live={liveConnected}/>;
-        case "products":  return <Products userId={currentUser.id} products={myProducts} setProducts={setMyProducts}/>;
-        case "orders":    return <Orders orders={myOrders}/>;
-        case "settings":  return <Settings user={currentUser} onUserUpdated={handleUserUpdated}/>;
-      }
-    }
-    switch(page) {
-      case "login":      return <Auth mode="login"  setPage={setPage} setSessionAndLoad={setSessionAndLoad}/>;
-      case "signup":     return <Auth mode="signup" setPage={setPage} setSessionAndLoad={setSessionAndLoad}/>;
-      case "directory":  return <StoreDirectory users={users} allProducts={allProducts} setCurrentStore={setCurrentStore} setPage={setPage} setSession={setSession}/>;
-      case "storefront": return <Storefront storeUser={storeUser} products={storeProducts} onOrderPlaced={handleOrderPlaced} cart={cart} setCart={setCart} setPage={setPage}/>;
-      case "cart":       return <Cart cart={cart} setCart={setCart} storeUser={storeUser} onOrderPlaced={handleOrderPlaced}/>;
-      default:           return <Landing setPage={setPage} goToDemo={goToDemo}/>;
-    }
-  };
+  // ── Nav page name from URL ────────────────────────────────────────────────
+  // Used just for active nav highlight
+  const location = window.location.pathname.replace("/","") || "home";
 
   return (
     <div className="noise-bg">
       <FontLoader/>
-      <Nav page={page} setPage={setPage} session={session} orders={myOrders} live={liveConnected} onLogout={logout} cartCount={cartCount}/>
-      {renderPage()}
+      <Nav
+        page={location}
+        setPage={(p) => {
+          if (p==="dashboard"||p==="products"||p==="orders"||p==="settings") navigate(`/${p}`);
+          else if (p==="login")     navigate("/login");
+          else if (p==="signup")    navigate("/signup");
+          else if (p==="directory") navigate("/directory");
+          else if (p==="cart")      navigate("/cart");
+          else                      navigate("/");
+        }}
+        session={session}
+        orders={myOrders}
+        live={liveConnected}
+        onLogout={logout}
+        cartCount={cartCount}
+      />
+      <Routes>
+        {/* ── Public routes ── */}
+        <Route path="/"          element={<Landing setPage={p=>navigate(`/${p}`)} goToDemo={goToDemo}/>}/>
+        <Route path="/login"     element={<Auth mode="login"  setPage={p=>navigate(`/${p}`)} setSessionAndLoad={setSessionAndLoad}/>}/>
+        <Route path="/signup"    element={<Auth mode="signup" setPage={p=>navigate(`/${p}`)} setSessionAndLoad={setSessionAndLoad}/>}/>
+        <Route path="/directory" element={
+          <StoreDirectory
+            users={users} allProducts={allProducts}
+            setCurrentStore={setCurrentStore}
+            setPage={p=>navigate(`/${p}`)}
+            setSession={setSession}
+          />
+        }/>
+        <Route path="/cart" element={
+          <Cart
+            cart={cart} setCart={setCart}
+            storeUser={users.find(u=>u.id===currentStore)||DEMO_USER}
+            onOrderPlaced={handleOrderPlaced}
+          />
+        }/>
+
+        {/* ── Each store gets its own public URL: /store/:slug ── */}
+        <Route path="/store/:slug" element={
+          <StorefrontPage
+            users={users}
+            allProducts={allProducts}
+            allOrders={allOrders}
+            setAllOrders={setAllOrders}
+            cart={cart}
+            setCart={setCart}
+          />
+        }/>
+
+        {/* ── Business dashboard routes (require login) ── */}
+        <Route path="/dashboard" element={
+          session?.role==="business"&&currentUser
+            ? <Dashboard user={currentUser} products={myProducts} orders={myOrders} live={liveConnected}/>
+            : <Navigate to="/login" replace/>
+        }/>
+        <Route path="/products" element={
+          session?.role==="business"&&currentUser
+            ? <Products userId={currentUser.id} products={myProducts} setProducts={setMyProducts}/>
+            : <Navigate to="/login" replace/>
+        }/>
+        <Route path="/orders" element={
+          session?.role==="business"&&currentUser
+            ? <Orders orders={myOrders}/>
+            : <Navigate to="/login" replace/>
+        }/>
+        <Route path="/settings" element={
+          session?.role==="business"&&currentUser
+            ? <Settings user={currentUser} onUserUpdated={handleUserUpdated}/>
+            : <Navigate to="/login" replace/>
+        }/>
+
+        {/* ── Catch-all ── */}
+        <Route path="*" element={<Navigate to="/" replace/>}/>
+      </Routes>
     </div>
   );
 }
