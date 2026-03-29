@@ -804,26 +804,88 @@ function Dashboard({ user, products, orders, live }) {
   );
 }
 
+// ─── IMAGE UPLOAD TO SUPABASE STORAGE ────────────────────────────────────────
+async function uploadImageToSupabase(file, userId) {
+  const ext      = file.name.split(".").pop() || "jpg";
+  const filename = `${userId}/${Date.now()}.${ext}`;
+  const res = await fetch(
+    `${SUPA_URL}/storage/v1/object/bloom-images/${filename}`,
+    {
+      method:  "POST",
+      headers: {
+        "apikey":        SUPA_KEY,
+        "Authorization": `Bearer ${SUPA_KEY}`,
+        "Content-Type":  file.type,
+        "x-upsert":      "true",
+      },
+      body: file,
+    }
+  );
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Upload failed: ${err}`);
+  }
+  // Return the public URL
+  return `${SUPA_URL}/storage/v1/object/public/bloom-images/${filename}`;
+}
+
 // ─── PRODUCTS ─────────────────────────────────────────────────────────────────
 function Products({ userId, products, setProducts }) {
-  const [showAdd, setShowAdd] = useState(false);
-  const [form, setForm] = useState({name:"",price:"",stock:"",cat:"",img:""});
-  const [saving, setSaving] = useState(false);
+  const [showAdd,    setShowAdd]    = useState(false);
+  const [form,       setForm]       = useState({name:"",price:"",stock:"",cat:""});
+  const [imgFile,    setImgFile]    = useState(null);   // raw File object
+  const [imgPreview, setImgPreview] = useState(null);   // base64 preview
+  const [uploading,  setUploading]  = useState(false);
+  const [saving,     setSaving]     = useState(false);
+  const [drag,       setDrag]       = useState(false);
+  const fileRef = useRef();
   const h = e => setForm(f=>({...f,[e.target.name]:e.target.value}));
 
+  const handleFile = (file) => {
+    if (!file || !file.type.startsWith("image/")) return;
+    setImgFile(file);
+    const r = new FileReader();
+    r.onload = e => setImgPreview(e.target.result);
+    r.readAsDataURL(file);
+  };
+
+  const resetForm = () => {
+    setForm({name:"",price:"",stock:"",cat:""});
+    setImgFile(null); setImgPreview(null); setShowAdd(false);
+  };
+
   const add = async () => {
-    if (!form.name.trim()||!form.price) return;
+    if (!form.name.trim() || !form.price) return;
     setSaving(true);
+    let imgUrl = "https://images.unsplash.com/photo-1487530811015-780e79f8d672?w=500&q=80";
+
+    // Upload image to Supabase Storage if a file was selected
+    if (imgFile && userId !== DEMO_ID) {
+      try {
+        setUploading(true);
+        imgUrl = await uploadImageToSupabase(imgFile, userId);
+        setUploading(false);
+      } catch(e) {
+        setUploading(false);
+        alert("Image upload failed. Check your Supabase storage bucket is set to public.");
+        setSaving(false); return;
+      }
+    } else if (imgPreview && userId === DEMO_ID) {
+      // Demo mode — just use the preview as base64
+      imgUrl = imgPreview;
+    }
+
     const np = {
       id:`p-${Date.now()}`, user_id:userId,
       name:form.name, price:parseInt(form.price),
       stock:parseInt(form.stock)||10, category:form.cat||"General",
-      img:form.img||"https://images.unsplash.com/photo-1487530811015-780e79f8d672?w=500&q=80",
+      img:imgUrl,
     };
+
     const saved = userId!==DEMO_ID ? await supa.insert("bloom_products",np) : np;
     if (saved) {
       setProducts(prev=>[...prev,{...np,...saved}]);
-      setForm({name:"",price:"",stock:"",cat:"",img:""}); setShowAdd(false);
+      resetForm();
     }
     setSaving(false);
   };
@@ -843,24 +905,95 @@ function Products({ userId, products, setProducts }) {
       </div>
 
       {showAdd&&(
-        <div style={{position:"fixed",inset:0,background:"rgba(45,31,43,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:200}} onClick={()=>setShowAdd(false)}>
-          <div className="card pop-in" style={{width:"100%",maxWidth:480,padding:36,margin:16,maxHeight:"90vh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
+        <div style={{position:"fixed",inset:0,background:"rgba(45,31,43,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:200}}
+          onClick={resetForm}>
+          <div className="card pop-in" style={{width:"100%",maxWidth:480,padding:36,margin:16,maxHeight:"90vh",overflowY:"auto"}}
+            onClick={e=>e.stopPropagation()}>
             <h3 style={{fontSize:26,marginBottom:24}}>Add New Product</h3>
             <div style={{display:"flex",flexDirection:"column",gap:12}}>
+
               <input className="inp" name="name" placeholder="Product name *" value={form.name} onChange={h}/>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
                 <input className="inp" name="price" type="number" placeholder="Price (₹) *" value={form.price} onChange={h}/>
                 <input className="inp" name="stock" type="number" placeholder="Stock qty" value={form.stock} onChange={h}/>
               </div>
               <input className="inp" name="cat" placeholder="Category (Fashion, Home, Food…)" value={form.cat} onChange={h}/>
+
+              {/* ── Image Upload Zone ── */}
               <div>
-                <label style={{fontSize:11,fontWeight:700,letterSpacing:"0.06em",display:"block",marginBottom:6,color:"var(--ink-soft)"}}>PRODUCT IMAGE URL</label>
-                <input className="inp" name="img" placeholder="https://… (paste any image URL)" value={form.img} onChange={h}/>
-                {form.img&&<img src={form.img} alt="" style={{marginTop:10,width:"100%",height:100,objectFit:"cover",borderRadius:8}} onError={e=>e.target.style.display="none"}/>}
+                <label style={{fontSize:11,fontWeight:700,letterSpacing:"0.06em",display:"block",marginBottom:8,color:"var(--ink-soft)"}}>
+                  PRODUCT PHOTO
+                </label>
+
+                {/* Hidden file input — opens gallery on phone, explorer on PC */}
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept="image/*"
+                  capture={false}
+                  style={{display:"none"}}
+                  onChange={e => handleFile(e.target.files[0])}
+                />
+
+                {imgPreview ? (
+                  /* Preview with change button */
+                  <div style={{position:"relative",borderRadius:14,overflow:"hidden",border:"1.5px solid var(--border-mid)"}}>
+                    <img src={imgPreview} alt="preview"
+                      style={{width:"100%",height:200,objectFit:"cover",display:"block"}}/>
+                    <div style={{position:"absolute",inset:0,background:"rgba(45,31,43,0.45)",display:"flex",alignItems:"center",justifyContent:"center",opacity:0,transition:"opacity 0.2s"}}
+                      onMouseEnter={e=>e.currentTarget.style.opacity=1}
+                      onMouseLeave={e=>e.currentTarget.style.opacity=0}>
+                      <button onClick={()=>fileRef.current.click()}
+                        style={{background:"#fff",border:"none",borderRadius:50,padding:"10px 22px",fontWeight:700,fontSize:13,cursor:"pointer",display:"flex",alignItems:"center",gap:6}}>
+                        <Icon n="img" size={14}/> Change Photo
+                      </button>
+                    </div>
+                    {/* Mobile — always show change button */}
+                    <button onClick={()=>fileRef.current.click()}
+                      style={{position:"absolute",bottom:10,right:10,background:"rgba(255,255,255,0.92)",border:"none",borderRadius:50,padding:"8px 16px",fontWeight:700,fontSize:12,cursor:"pointer",display:"flex",alignItems:"center",gap:5}}>
+                      <Icon n="img" size={13}/> Change
+                    </button>
+                  </div>
+                ) : (
+                  /* Upload drop zone */
+                  <div
+                    className={`upload-zone${drag?" drag":""}`}
+                    onDragOver={e=>{e.preventDefault();setDrag(true);}}
+                    onDragLeave={()=>setDrag(false)}
+                    onDrop={e=>{e.preventDefault();setDrag(false);handleFile(e.dataTransfer.files[0]);}}
+                    onClick={()=>fileRef.current.click()}
+                    style={{padding:32}}>
+                    <Icon n="upload" size={32} color="var(--pink-deep)"/>
+                    <p style={{fontSize:14,fontWeight:700,marginTop:12,color:"var(--ink)"}}>
+                      Tap to choose a photo
+                    </p>
+                    <p style={{fontSize:12,color:"var(--ink-soft)",marginTop:5}}>
+                      📱 Opens your gallery on phone<br/>
+                      💻 Opens file explorer on PC
+                    </p>
+                    <p style={{fontSize:11,color:"var(--mist,#ccc)",marginTop:8}}>
+                      JPG, PNG, WEBP · Max 5MB
+                    </p>
+                  </div>
+                )}
               </div>
+
+              {/* Status messages */}
+              {uploading&&(
+                <div style={{background:"var(--surface)",borderRadius:10,padding:"12px 16px",display:"flex",alignItems:"center",gap:10}}>
+                  <div style={{width:16,height:16,border:"2px solid var(--pink-btn)",borderTopColor:"transparent",borderRadius:"50%",animation:"spin 0.8s linear infinite",flexShrink:0}}/>
+                  <span style={{fontSize:13,color:"var(--ink-soft)"}}>Uploading photo to Supabase…</span>
+                </div>
+              )}
+
               <div style={{display:"flex",gap:9,marginTop:4}}>
-                <button className="btn-pink" style={{flex:1,padding:13,borderRadius:12}} onClick={add} disabled={saving}>{saving?"Saving…":"Add Product"}</button>
-                <button className="btn-ghost" style={{flex:1,padding:13,borderRadius:12}} onClick={()=>setShowAdd(false)}>Cancel</button>
+                <button className="btn-pink" style={{flex:1,padding:13,borderRadius:12}}
+                  onClick={add} disabled={saving||uploading}>
+                  {uploading?"Uploading…":saving?"Saving…":"Add Product"}
+                </button>
+                <button className="btn-ghost" style={{flex:1,padding:13,borderRadius:12}} onClick={resetForm}>
+                  Cancel
+                </button>
               </div>
             </div>
           </div>
