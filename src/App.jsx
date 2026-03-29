@@ -344,11 +344,11 @@ const DEMO_ORDERS = [
   { id:"BL-DEMO3", store_id:DEMO_ID, customer_name:"Ria M.",    customer_phone:"9876500003", items:[{...DEMO_PRODUCTS[2],qty:2}], amount:1098, status:"confirmed", proof:"", upi_ref:"TXN333", order_date:"28 Mar 2026", date:"28 Mar 2026" },
 ];
 
-// ─── SESSION STORAGE (tiny — just userId+role, survives refresh) ─────────────
+// ─── SESSION STORAGE (localStorage — works on any browser/device) ─────────────
 const Session = {
-  save: async (s) => { try { if(window.storage) await window.storage.set("bloom:sess", JSON.stringify(s)); } catch {} },
-  load: async ()  => { try { if(!window.storage) return null; const r=await window.storage.get("bloom:sess"); return r?JSON.parse(r.value):null; } catch { return null; } },
-  clear:async ()  => { try { if(window.storage) await window.storage.delete("bloom:sess"); } catch {} },
+  save:  (s)  => { try { localStorage.setItem("bloom:sess", JSON.stringify(s)); } catch {} },
+  load:  ()   => { try { const r = localStorage.getItem("bloom:sess"); return r ? JSON.parse(r) : null; } catch { return null; } },
+  clear: ()   => { try { localStorage.removeItem("bloom:sess"); } catch {} },
 };
 
 // ─── PRO BANNER ──────────────────────────────────────────────────────────────
@@ -1331,7 +1331,7 @@ export default function App() {
     const boot = async () => {
       try {
         // Restore session
-        const savedSess = await Session.load();
+        const savedSess = Session.load();
         if (savedSess?.userId) {
           await loadUserData(savedSess);
         }
@@ -1361,7 +1361,7 @@ export default function App() {
       setPage("dashboard"); return;
     }
     const rows = await supa.select("bloom_users",`id=eq.${sess.userId}`);
-    if (rows.length===0) { await Session.clear(); return; }
+    if (rows.length===0) { Session.clear(); return; }
 
     const u = rows[0];
     setUsers(prev => prev.find(x=>x.id===u.id) ? prev.map(x=>x.id===u.id?u:x) : [DEMO_USER,u,...prev.filter(x=>x.id!==DEMO_ID&&x.id!==u.id)]);
@@ -1376,7 +1376,7 @@ export default function App() {
 
   // ── Called on login/signup — saves session and loads data ────────────────
   const setSessionAndLoad = async (sess) => {
-    await Session.save(sess);
+    Session.save(sess);
     if (sess.role==="customer") { setSession(sess); setPage("directory"); return; }
     await loadUserData(sess);
   };
@@ -1395,7 +1395,7 @@ export default function App() {
   };
 
   const logout = async () => {
-    await Session.clear();
+    Session.clear();
     setSession(null); setPage("landing"); setCart([]);
   };
 
