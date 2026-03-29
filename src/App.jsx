@@ -120,6 +120,8 @@ const Icon = ({ n, size=18, color="currentColor" }) => {
 // ─── SUPABASE ─────────────────────────────────────────────────────────────────
 const SUPA_URL = "https://fjpmovyrvuuvgdhwusec.supabase.co";
 const SUPA_KEY = "sb_publishable_9LcA-mtVfk7nKRj-02Ie-Q_3YQv7suY";
+// ── Backend URL — update this after Railway deploy ───────────────────────────
+const BACKEND_URL = "https://bloom-backend-v55a.onrender.com";
 const SH = {
   "apikey":        SUPA_KEY,
   "Authorization": `Bearer ${SUPA_KEY}`,
@@ -379,6 +381,121 @@ function ProBanner() {
       <button style={{background:"linear-gradient(135deg,var(--pink-btn),var(--blue-deep))",color:"#fff",border:"none",borderRadius:50,padding:"9px 20px",fontSize:12,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
         Join Waitlist →
       </button>
+    </div>
+  );
+}
+
+// ─── CASHFREE CHECKOUT ────────────────────────────────────────────────────────
+// Loads Cashfree JS SDK and opens their checkout
+async function loadCashfreeSDK() {
+  if (window.Cashfree) return window.Cashfree({ mode:"sandbox" });
+  return new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = "https://sdk.cashfree.com/js/v3/cashfree.js";
+    s.onload = () => resolve(window.Cashfree({ mode:"sandbox" }));
+    s.onerror = reject;
+    document.head.appendChild(s);
+  });
+}
+
+async function startCashfreePayment({ amount, orderId, customerName, customerEmail, customerPhone, storeName, storeSlug, onSuccess, onFail }) {
+  try {
+    // 1. Create order on backend
+    const res = await fetch(`${BACKEND_URL}/api/create-order`, {
+      method:  "POST",
+      headers: { "Content-Type":"application/json" },
+      body:    JSON.stringify({ amount, orderId, customerName, customerEmail, customerPhone, storeName, storeSlug }),
+    });
+    const data = await res.json();
+    if (!data.paymentSessionId) throw new Error(data.error || "Order creation failed");
+
+    // 2. Open Cashfree checkout
+    const cashfree = await loadCashfreeSDK();
+    cashfree.checkout({
+      paymentSessionId: data.paymentSessionId,
+      redirectTarget:   "_modal",           // opens as popup, not full redirect
+    }).then(result => {
+      if (result.error)      onFail(result.error.message);
+      else if (result.paymentDetails) onSuccess(result.paymentDetails);
+    });
+  } catch(e) {
+    console.error("Cashfree error:", e);
+    onFail(e.message);
+  }
+}
+
+// ─── PAYMENT STATUS PAGE ──────────────────────────────────────────────────────
+// Customer lands here after Cashfree redirect
+function PaymentStatusPage({ allOrders, setAllOrders, users }) {
+  const navigate = useNavigate();
+  const params   = new URLSearchParams(window.location.search);
+  const orderId  = params.get("order_id");
+  const storeSlug= params.get("store");
+  const [status, setStatus] = useState("checking"); // checking | paid | failed
+
+  useEffect(() => {
+    if (!orderId) { setStatus("failed"); return; }
+    const check = async () => {
+      try {
+        const res  = await fetch(`${BACKEND_URL}/api/payment-status/${orderId}`);
+        const data = await res.json();
+        if (data.status === "PAID") {
+          setStatus("paid");
+          // Update order in Supabase
+          await supa.patch("bloom_orders", `id=eq.${orderId}`, { status:"confirmed" });
+        } else {
+          setStatus("failed");
+        }
+      } catch { setStatus("failed"); }
+    };
+    check();
+  }, [orderId]);
+
+  return (
+    <div style={{minHeight:"80vh",display:"flex",alignItems:"center",justifyContent:"center",padding:"40px 24px"}}>
+      <div className="card pop-in" style={{maxWidth:440,width:"100%",padding:48,textAlign:"center"}}>
+        {status==="checking"&&<>
+          <div style={{width:64,height:64,border:"4px solid var(--pink-btn)",borderTopColor:"transparent",borderRadius:"50%",animation:"spin 0.8s linear infinite",margin:"0 auto 24px"}}/>
+          <h2 style={{fontSize:26}}>Checking payment…</h2>
+          <p style={{color:"var(--ink-soft)",marginTop:8}}>Please wait a moment</p>
+        </>}
+
+        {status==="paid"&&<>
+          <div style={{width:80,height:80,borderRadius:"50%",background:"var(--green-bg)",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 20px",animation:"pulse 1.5s ease infinite"}}>
+            <svg width={40} height={40} viewBox="0 0 24 24" fill="none" stroke="var(--green)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="20 6 9 17 4 12" strokeDasharray="60" strokeDashoffset="60" style={{animation:"checkDraw 0.5s ease forwards 0.1s"}}/>
+            </svg>
+          </div>
+          <h2 style={{fontSize:30,marginBottom:8}}><em style={{color:"var(--green)"}}>Payment Successful!</em></h2>
+          <p style={{color:"var(--ink-soft)",fontSize:14,lineHeight:1.7,marginBottom:24}}>
+            Your order has been confirmed. The store will prepare your items shortly. 🌸
+          </p>
+          <div style={{display:"flex",flexDirection:"column",gap:10}}>
+            <button className="btn-green" style={{padding:"13px 24px",borderRadius:12}} onClick={()=>navigate("/customer/orders")}>
+              View My Orders
+            </button>
+            {storeSlug&&<button className="btn-ghost" style={{padding:"12px 24px",borderRadius:12}} onClick={()=>navigate(`/store/${storeSlug}`)}>
+              Back to Store
+            </button>}
+          </div>
+        </>}
+
+        {status==="failed"&&<>
+          <div style={{fontSize:56,marginBottom:16}}>😔</div>
+          <h2 style={{fontSize:28,marginBottom:8}}>Payment Unsuccessful</h2>
+          <p style={{color:"var(--ink-soft)",fontSize:14,lineHeight:1.7,marginBottom:24}}>
+            Something went wrong or the payment was cancelled. Please try again.
+          </p>
+          <div style={{display:"flex",flexDirection:"column",gap:10}}>
+            {storeSlug&&<button className="btn-pink" style={{padding:"13px 24px",borderRadius:12}} onClick={()=>navigate(`/store/${storeSlug}`)}>
+              Try Again
+            </button>}
+            <button className="btn-ghost" style={{padding:"12px 24px",borderRadius:12}} onClick={()=>navigate("/")}>
+              Go Home
+            </button>
+          </div>
+        </>}
+      </div>
     </div>
   );
 }
@@ -1330,38 +1447,49 @@ function StorefrontPage({ users, allProducts, allOrders, setAllOrders, cart, set
 
 // ─── STOREFRONT ───────────────────────────────────────────────────────────────
 function Storefront({ storeUser, products, onOrderPlaced, cart, setCart, setPage, customer }) {
-  const [sel, setSel]     = useState(null);
-  const [qty, setQty]     = useState(1);
-  const [modal, setModal] = useState(null);
+  const [sel, setSel] = useState(null);
+  const [qty, setQty] = useState(1);
 
   const addCart = (p) => {
     setCart(c=>{ const e=c.find(x=>x.id===p.id); return e?c.map(x=>x.id===p.id?{...x,qty:x.qty+qty}:x):[...c,{...p,qty}]; });
     setSel(null);
   };
 
-  const buyNow = (p,q=1) => {
-    if (!storeUser?.upi_id) { alert("This store hasn't set up UPI yet."); return; }
-    setModal({ amount:p.price*q, label:p.name, items:[{...p,qty:q}] });
-    setSel(null);
-  };
-
-  const handleOrderSuccess = async (orderData) => {
+  const buyNow = async (p, q=1) => {
+    if (!storeUser?.upi_id && !storeUser?.store_name) { alert("This store hasn't set up payments yet."); return; }
     const orderId = `BL-${Date.now().toString(36).toUpperCase()}`;
-    const newOrder = {
-      id:orderId, store_id:storeUser.id,
-      customer_name:customer?.name||orderData.customerName,
-      customer_phone:customer?.phone||orderData.customerPhone,
-      customer_id:customer?.id||null,
-      items:modal.items, amount:modal.amount,
-      status:"confirmed", proof:orderData.proof||"", upi_ref:orderData.upiRef||"",
-      order_date:today(),
-    };
-    if (storeUser.id!==DEMO_ID) await supa.insert("bloom_orders", newOrder);
-    onOrderPlaced(storeUser.id, {...newOrder, date:today()});
-    if (storeUser.mailersend_key&&storeUser.email) {
-      await sendOrderEmail({ mailerKey:storeUser.mailersend_key, toEmail:storeUser.email, toName:storeUser.name, order:{...newOrder,date:today()}, storeName:storeUser.store_name });
-    }
-    setModal(null);
+    const amount  = p.price * q;
+    const items   = [{...p, qty:q}];
+
+    await startCashfreePayment({
+      amount,
+      orderId,
+      customerName:  customer?.name  || "Customer",
+      customerEmail: customer?.email || "customer@bloom.store",
+      customerPhone: customer?.phone || "9999999999",
+      storeName:     storeUser.store_name,
+      storeSlug:     storeUser.store_slug,
+      onSuccess: async (paymentDetails) => {
+        // Payment verified by Cashfree — save confirmed order
+        const newOrder = {
+          id:orderId, store_id:storeUser.id,
+          customer_name:customer?.name||"Customer",
+          customer_phone:customer?.phone||"",
+          customer_id:customer?.id||null,
+          items, amount,
+          status:"confirmed",
+          proof:"", upi_ref: String(paymentDetails?.paymentAmount||""),
+          order_date:today(),
+        };
+        if (storeUser.id!==DEMO_ID) await supa.insert("bloom_orders", newOrder);
+        onOrderPlaced(storeUser.id, {...newOrder, date:today()});
+        if (storeUser.mailersend_key&&storeUser.email) {
+          await sendOrderEmail({ mailerKey:storeUser.mailersend_key, toEmail:storeUser.email, toName:storeUser.name, order:{...newOrder,date:today()}, storeName:storeUser.store_name });
+        }
+        setSel(null);
+      },
+      onFail: (msg) => alert(`Payment failed: ${msg}`),
+    });
   };
 
   if (!storeUser) return <div style={{padding:60,textAlign:"center",color:"var(--ink-soft)"}}>Store not found.</div>;
@@ -1429,16 +1557,12 @@ function Storefront({ storeUser, products, onOrderPlaced, cart, setCart, setPage
                 </div>
                 <div style={{display:"flex",flexDirection:"column",gap:9}}>
                   <button className="btn-pink" style={{padding:13,borderRadius:12}} onClick={()=>addCart(sel)}>🛍 Add to Cart · ₹{(sel.price*qty).toLocaleString()}</button>
-                  <button className="btn-green" style={{padding:13,borderRadius:12}} onClick={()=>buyNow(sel,qty)}>📱 Pay Now with UPI · ₹{(sel.price*qty).toLocaleString()}</button>
+                  <button className="btn-green" style={{padding:13,borderRadius:12}} onClick={()=>buyNow(sel,qty)}>💳 Pay Now · ₹{(sel.price*qty).toLocaleString()}</button>
                 </div>
               </div>
             </div>
           </div>
         </div>
-      )}
-      {modal&&storeUser.upi_id&&(
-        <UpiCheckoutModal amount={modal.amount} storeName={storeUser.store_name} upiId={storeUser.upi_id}
-          productLabel={modal.label} onClose={()=>setModal(null)} onSuccess={handleOrderSuccess} customer={customer}/>
       )}
     </div>
   );
@@ -1446,28 +1570,44 @@ function Storefront({ storeUser, products, onOrderPlaced, cart, setCart, setPage
 
 // ─── CART ─────────────────────────────────────────────────────────────────────
 function Cart({ cart, setCart, storeUser, onOrderPlaced, customer }) {
-  const [modal, setModal] = useState(false);
+  const [paying, setPaying] = useState(false);
   const total = cart.reduce((s,i)=>s+i.price*i.qty,0);
   const remove = id => setCart(c=>c.filter(x=>x.id!==id));
   const updQ   = (id,qty) => setCart(c=>c.map(x=>x.id===id?{...x,qty:Math.max(1,qty)}:x));
 
-  const handleOrderSuccess = async (orderData) => {
+  const handlePay = async () => {
+    if (!storeUser) { alert("Store not found"); return; }
+    setPaying(true);
     const orderId = `BL-${Date.now().toString(36).toUpperCase()}`;
-    const newOrder = {
-      id:orderId, store_id:storeUser?.id,
-      customer_name:customer?.name||orderData.customerName,
-      customer_phone:customer?.phone||orderData.customerPhone,
-      customer_id:customer?.id||null,
-      items:cart, amount:total,
-      status:"confirmed", proof:orderData.proof||"", upi_ref:orderData.upiRef||"",
-      order_date:today(),
-    };
-    if (storeUser?.id&&storeUser.id!==DEMO_ID) await supa.insert("bloom_orders",newOrder);
-    onOrderPlaced(storeUser?.id, {...newOrder,date:today()});
-    if (storeUser?.mailersend_key&&storeUser?.email) {
-      await sendOrderEmail({ mailerKey:storeUser.mailersend_key, toEmail:storeUser.email, toName:storeUser.name, order:{...newOrder,date:today()}, storeName:storeUser.store_name });
-    }
-    setCart([]); setModal(false);
+    await startCashfreePayment({
+      amount:        total,
+      orderId,
+      customerName:  customer?.name  || "Customer",
+      customerEmail: customer?.email || "customer@bloom.store",
+      customerPhone: customer?.phone || "9999999999",
+      storeName:     storeUser.store_name,
+      storeSlug:     storeUser.store_slug,
+      onSuccess: async (paymentDetails) => {
+        const newOrder = {
+          id:orderId, store_id:storeUser?.id,
+          customer_name:customer?.name||"Customer",
+          customer_phone:customer?.phone||"",
+          customer_id:customer?.id||null,
+          items:cart, amount:total,
+          status:"confirmed",
+          proof:"", upi_ref:String(paymentDetails?.paymentAmount||""),
+          order_date:today(),
+        };
+        if (storeUser?.id&&storeUser.id!==DEMO_ID) await supa.insert("bloom_orders",newOrder);
+        onOrderPlaced(storeUser?.id, {...newOrder,date:today()});
+        if (storeUser?.mailersend_key&&storeUser?.email) {
+          await sendOrderEmail({ mailerKey:storeUser.mailersend_key, toEmail:storeUser.email, toName:storeUser.name, order:{...newOrder,date:today()}, storeName:storeUser.store_name });
+        }
+        setCart([]);
+        setPaying(false);
+      },
+      onFail: (msg) => { alert(`Payment failed: ${msg}`); setPaying(false); },
+    });
   };
 
   if (!cart.length) return (
@@ -1520,20 +1660,14 @@ function Cart({ cart, setCart, storeUser, onOrderPlaced, customer }) {
             <span style={{color:"var(--pink-btn)",fontFamily:"Playfair Display",fontSize:26,fontWeight:700}}>₹{total.toLocaleString()}</span>
           </div>
           <div style={{marginTop:20}}>
-            {!storeUser?.upi_id&&<div style={{background:"#FFF3CD",borderRadius:9,padding:"9px 12px",fontSize:12,color:"#7D5A00",fontWeight:600,marginBottom:12}}>⚠️ Store UPI not set up yet</div>}
             <button className="btn-green" style={{width:"100%",padding:15,fontSize:14,borderRadius:12}}
-              onClick={()=>storeUser?.upi_id?setModal(true):alert("Store UPI not set up yet.")} disabled={!storeUser?.upi_id}>
-              📱 Pay ₹{total.toLocaleString()} with UPI
+              onClick={handlePay} disabled={paying}>
+              {paying?"Opening payment…":`💳 Pay ₹${total.toLocaleString()}`}
             </button>
-            <p style={{fontSize:11,color:"var(--ink-soft)",textAlign:"center",marginTop:9}}>GPay · PhonePe · Paytm · BHIM · Any UPI</p>
+            <p style={{fontSize:11,color:"var(--ink-soft)",textAlign:"center",marginTop:9}}>UPI · Cards · Wallets · Secured by Cashfree</p>
           </div>
         </div>
       </div>
-      {modal&&storeUser?.upi_id&&(
-        <UpiCheckoutModal amount={total} storeName={storeUser?.store_name||"Bloom Store"}
-          upiId={storeUser.upi_id} productLabel={`${cart.length} item${cart.length>1?"s":""}`}
-          onClose={()=>setModal(false)} onSuccess={handleOrderSuccess} customer={customer}/>
-      )}
     </div>
   );
 }
@@ -1909,6 +2043,9 @@ export default function App() {
         onCustomerLogout={handleCustomerLogout}
       />
       <Routes>
+        {/* ── Payment status (Cashfree redirect) ── */}
+        <Route path="/payment-status" element={<PaymentStatusPage allOrders={allOrders} setAllOrders={setAllOrders} users={users}/>}/>
+
         {/* ── Public routes ── */}
         <Route path="/"          element={<Landing setPage={p=>navigate(`/${p}`)} goToDemo={goToDemo}/>}/>
         <Route path="/login"     element={<Auth mode="login"  setPage={p=>navigate(`/${p}`)} setSessionAndLoad={setSessionAndLoad}/>}/>
