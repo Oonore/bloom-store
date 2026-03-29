@@ -600,10 +600,10 @@ function Nav({ page, setPage, session, orders, live, onLogout, cartCount, custom
           </>
         )}
         {!isBiz&&!isCust&&(
-          <div style={{display:"flex",gap:8}}>
-            <button className="btn-ghost" onClick={()=>navigate("/customer/login")}>Shop Login</button>
-            <button className="btn-ghost" onClick={()=>navigate("/login")}>Business</button>
-            <button className="btn-pink" onClick={()=>navigate("/signup")}>Start Free</button>
+          <div style={{display:"flex",gap:8,alignItems:"center"}}>
+            <button className="btn-ghost" style={{padding:"9px 18px"}} onClick={()=>navigate("/customer/login")}>Customer Login</button>
+            <button className="btn-ghost" style={{padding:"9px 18px"}} onClick={()=>navigate("/login")}>Business Login</button>
+            <button className="btn-pink" style={{padding:"9px 20px"}} onClick={()=>navigate("/signup")}>Start Free</button>
           </div>
         )}
         {isBiz&&(
@@ -1604,7 +1604,7 @@ function CustomerAuth({ mode, setPage, onCustomerLogin }) {
           </span>
         </p>
         <p style={{textAlign:"center",marginTop:12,fontSize:12,color:"var(--ink-soft)"}}>
-          Are you a business? <span style={{color:"var(--pink-btn)",cursor:"pointer",fontWeight:600}} onClick={()=>navigate("/login")}>Business login →</span>
+          Are you a business? <span style={{color:"var(--pink-btn)",cursor:"pointer",fontWeight:600}} onClick={()=>navigate("/login")}>Business Login →</span>
         </p>
       </div>
     </div>
