@@ -1862,7 +1862,6 @@ export default function App() {
     setCustomer(null);
     navigate("/");
   };
-  };
 
   const logout = async () => {
     Session.clear();
