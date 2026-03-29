@@ -352,6 +352,13 @@ const Session = {
   clear: ()   => { try { localStorage.removeItem("bloom:sess"); } catch {} },
 };
 
+// Customer session stored separately so business + customer logins don't clash
+const CustSession = {
+  save:  (s)  => { try { localStorage.setItem("bloom:cust", JSON.stringify(s)); } catch {} },
+  load:  ()   => { try { const r = localStorage.getItem("bloom:cust"); return r ? JSON.parse(r) : null; } catch { return null; } },
+  clear: ()   => { try { localStorage.removeItem("bloom:cust"); } catch {} },
+};
+
 // ─── PRO BANNER ──────────────────────────────────────────────────────────────
 function ProBanner() {
   return (
@@ -377,11 +384,11 @@ function ProBanner() {
 }
 
 // ─── UPI CHECKOUT MODAL ───────────────────────────────────────────────────────
-function UpiCheckoutModal({ amount, storeName, upiId, productLabel, onClose, onSuccess }) {
+function UpiCheckoutModal({ amount, storeName, upiId, productLabel, onClose, onSuccess, customer }) {
   const [step, setStep]   = useState("pay");
   const [proof, setProof] = useState(null);
-  const [name, setName]   = useState("");
-  const [phone, setPhone] = useState("");
+  const [name, setName]   = useState(customer?.name||"");
+  const [phone, setPhone] = useState(customer?.phone||"");
   const [upiRef, setUpiRef] = useState("");
   const [copied, setCopied] = useState(false);
   const [drag, setDrag]   = useState(false);
@@ -558,18 +565,19 @@ function NotifBell({ orders, live }) {
 }
 
 // ─── NAV ─────────────────────────────────────────────────────────────────────
-function Nav({ page, setPage, session, orders, live, onLogout, cartCount }) {
-  const isBiz  = session?.role==="business";
-  const isCust = session?.role==="customer";
+function Nav({ page, setPage, session, orders, live, onLogout, cartCount, customer, onCustomerLogout }) {
+  const navigate  = useNavigate();
+  const isBiz     = session?.role==="business";
+  const isCust    = !!customer;
   return (
     <nav style={{position:"sticky",top:0,zIndex:100,background:"rgba(255,255,255,0.88)",backdropFilter:"blur(20px)",borderBottom:"1px solid var(--border)",display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 28px",height:64}}>
-      <div style={{display:"flex",alignItems:"center",gap:10,cursor:"pointer"}} onClick={()=>setPage(isBiz?"dashboard":"landing")}>
+      <div style={{display:"flex",alignItems:"center",gap:10,cursor:"pointer"}} onClick={()=>navigate(isBiz?"/dashboard":"/")}>
         <BloomSphere size={36}/><span style={{fontFamily:"Playfair Display",fontWeight:700,fontSize:21}}>Bloom</span>
       </div>
       {isBiz&&(
         <div style={{display:"flex",gap:2}}>
           {["dashboard","products","orders","settings"].map(p=>(
-            <button key={p} onClick={()=>setPage(p)} style={{background:page===p?"var(--pink)":"transparent",border:"none",borderRadius:50,padding:"8px 16px",fontFamily:"Plus Jakarta Sans",fontSize:13,fontWeight:600,color:page===p?"var(--pink-btn-h)":"var(--ink-soft)",cursor:"pointer",transition:"all 0.2s",textTransform:"capitalize"}}>
+            <button key={p} onClick={()=>navigate(`/${p}`)} style={{background:page===p?"var(--pink)":"transparent",border:"none",borderRadius:50,padding:"8px 16px",fontFamily:"Plus Jakarta Sans",fontSize:13,fontWeight:600,color:page===p?"var(--pink-btn-h)":"var(--ink-soft)",cursor:"pointer",transition:"all 0.2s",textTransform:"capitalize"}}>
               {p}
             </button>
           ))}
@@ -578,18 +586,31 @@ function Nav({ page, setPage, session, orders, live, onLogout, cartCount }) {
       <div style={{display:"flex",alignItems:"center",gap:10}}>
         {isBiz&&<NotifBell orders={orders} live={live}/>}
         {isCust&&(
-          <button className="btn-ghost" style={{padding:"8px 14px",display:"flex",alignItems:"center",gap:6}} onClick={()=>setPage("cart")}>
-            <Icon n="cart" size={15}/>Cart
-            {cartCount>0&&<span style={{background:"var(--pink-btn)",color:"#fff",borderRadius:"50%",width:17,height:17,fontSize:10,fontWeight:700,display:"inline-flex",alignItems:"center",justifyContent:"center"}}>{cartCount}</span>}
+          <>
+            <button className="btn-ghost" style={{padding:"8px 14px",display:"flex",alignItems:"center",gap:6}} onClick={()=>navigate("/cart")}>
+              <Icon n="cart" size={15}/>Cart
+              {cartCount>0&&<span style={{background:"var(--pink-btn)",color:"#fff",borderRadius:"50%",width:17,height:17,fontSize:10,fontWeight:700,display:"inline-flex",alignItems:"center",justifyContent:"center"}}>{cartCount}</span>}
+            </button>
+            <button className="btn-ghost" style={{padding:"8px 14px",display:"flex",alignItems:"center",gap:6}} onClick={()=>navigate("/customer/orders")}>
+              🛍 My Orders
+            </button>
+            <button className="btn-ghost" style={{display:"flex",alignItems:"center",gap:6,padding:"8px 16px"}} onClick={onCustomerLogout}>
+              <Icon n="out" size={13}/>Exit
+            </button>
+          </>
+        )}
+        {!isBiz&&!isCust&&(
+          <div style={{display:"flex",gap:8}}>
+            <button className="btn-ghost" onClick={()=>navigate("/customer/login")}>Shop Login</button>
+            <button className="btn-ghost" onClick={()=>navigate("/login")}>Business</button>
+            <button className="btn-pink" onClick={()=>navigate("/signup")}>Start Free</button>
+          </div>
+        )}
+        {isBiz&&(
+          <button className="btn-ghost" style={{display:"flex",alignItems:"center",gap:6,padding:"8px 16px"}} onClick={onLogout}>
+            <Icon n="out" size={13}/>Exit
           </button>
         )}
-        {session
-          ? <button className="btn-ghost" style={{display:"flex",alignItems:"center",gap:6,padding:"8px 16px"}} onClick={onLogout}><Icon n="out" size={13}/>Exit</button>
-          : <div style={{display:"flex",gap:8}}>
-              <button className="btn-ghost" onClick={()=>setPage("login")}>Log in</button>
-              <button className="btn-pink" onClick={()=>setPage("signup")}>Start Free</button>
-            </div>
-        }
       </div>
     </nav>
   );
@@ -1308,7 +1329,7 @@ function StorefrontPage({ users, allProducts, allOrders, setAllOrders, cart, set
 }
 
 // ─── STOREFRONT ───────────────────────────────────────────────────────────────
-function Storefront({ storeUser, products, onOrderPlaced, cart, setCart, setPage }) {
+function Storefront({ storeUser, products, onOrderPlaced, cart, setCart, setPage, customer }) {
   const [sel, setSel]     = useState(null);
   const [qty, setQty]     = useState(1);
   const [modal, setModal] = useState(null);
@@ -1328,16 +1349,15 @@ function Storefront({ storeUser, products, onOrderPlaced, cart, setCart, setPage
     const orderId = `BL-${Date.now().toString(36).toUpperCase()}`;
     const newOrder = {
       id:orderId, store_id:storeUser.id,
-      customer_name:orderData.customerName, customer_phone:orderData.customerPhone,
+      customer_name:customer?.name||orderData.customerName,
+      customer_phone:customer?.phone||orderData.customerPhone,
+      customer_id:customer?.id||null,
       items:modal.items, amount:modal.amount,
       status:"confirmed", proof:orderData.proof||"", upi_ref:orderData.upiRef||"",
       order_date:today(),
     };
-    // Save to Supabase (triggers realtime to business owner's dashboard)
     if (storeUser.id!==DEMO_ID) await supa.insert("bloom_orders", newOrder);
-    // Notify parent so local state updates
     onOrderPlaced(storeUser.id, {...newOrder, date:today()});
-    // Send email to business owner
     if (storeUser.mailersend_key&&storeUser.email) {
       await sendOrderEmail({ mailerKey:storeUser.mailersend_key, toEmail:storeUser.email, toName:storeUser.name, order:{...newOrder,date:today()}, storeName:storeUser.store_name });
     }
@@ -1418,14 +1438,14 @@ function Storefront({ storeUser, products, onOrderPlaced, cart, setCart, setPage
       )}
       {modal&&storeUser.upi_id&&(
         <UpiCheckoutModal amount={modal.amount} storeName={storeUser.store_name} upiId={storeUser.upi_id}
-          productLabel={modal.label} onClose={()=>setModal(null)} onSuccess={handleOrderSuccess}/>
+          productLabel={modal.label} onClose={()=>setModal(null)} onSuccess={handleOrderSuccess} customer={customer}/>
       )}
     </div>
   );
 }
 
 // ─── CART ─────────────────────────────────────────────────────────────────────
-function Cart({ cart, setCart, storeUser, onOrderPlaced }) {
+function Cart({ cart, setCart, storeUser, onOrderPlaced, customer }) {
   const [modal, setModal] = useState(false);
   const total = cart.reduce((s,i)=>s+i.price*i.qty,0);
   const remove = id => setCart(c=>c.filter(x=>x.id!==id));
@@ -1435,7 +1455,9 @@ function Cart({ cart, setCart, storeUser, onOrderPlaced }) {
     const orderId = `BL-${Date.now().toString(36).toUpperCase()}`;
     const newOrder = {
       id:orderId, store_id:storeUser?.id,
-      customer_name:orderData.customerName, customer_phone:orderData.customerPhone,
+      customer_name:customer?.name||orderData.customerName,
+      customer_phone:customer?.phone||orderData.customerPhone,
+      customer_id:customer?.id||null,
       items:cart, amount:total,
       status:"confirmed", proof:orderData.proof||"", upi_ref:orderData.upiRef||"",
       order_date:today(),
@@ -1459,6 +1481,13 @@ function Cart({ cart, setCart, storeUser, onOrderPlaced }) {
   return (
     <div style={{padding:"44px 6vw",maxWidth:960,margin:"0 auto"}}>
       <h2 style={{fontSize:40,marginBottom:36}}>Your <em style={{color:"var(--pink-btn)"}}>Cart</em></h2>
+      {/* Customer info bar */}
+      {customer&&(
+        <div style={{background:"var(--green-bg)",borderRadius:12,padding:"12px 18px",marginBottom:20,display:"flex",alignItems:"center",gap:10,fontSize:13}}>
+          <span style={{fontSize:18}}>🌸</span>
+          <span>Logged in as <strong>{customer.name}</strong> — your order will be saved to your account</span>
+        </div>
+      )}
       <div style={{display:"grid",gridTemplateColumns:"1fr 340px",gap:28,alignItems:"start"}}>
         <div style={{display:"flex",flexDirection:"column",gap:14}}>
           {cart.map(item=>(
@@ -1503,8 +1532,222 @@ function Cart({ cart, setCart, storeUser, onOrderPlaced }) {
       {modal&&storeUser?.upi_id&&(
         <UpiCheckoutModal amount={total} storeName={storeUser?.store_name||"Bloom Store"}
           upiId={storeUser.upi_id} productLabel={`${cart.length} item${cart.length>1?"s":""}`}
-          onClose={()=>setModal(false)} onSuccess={handleOrderSuccess}/>
+          onClose={()=>setModal(false)} onSuccess={handleOrderSuccess} customer={customer}/>
       )}
+    </div>
+  );
+}
+
+// ─── CUSTOMER AUTH ────────────────────────────────────────────────────────────
+function CustomerAuth({ mode, setPage, onCustomerLogin }) {
+  const navigate = useNavigate();
+  const [form, setForm]   = useState({name:"",email:"",phone:"",pass:"",pass2:""});
+  const [errs, setErrs]   = useState({});
+  const [loading, setLoading] = useState(false);
+  const h = e => setForm(f=>({...f,[e.target.name]:e.target.value}));
+  const Err = ({k})=>errs[k]?<p style={{fontSize:11,color:"var(--red)",marginTop:4}}>{errs[k]}</p>:null;
+
+  const submit = async () => {
+    const e = {};
+    if (mode==="signup") {
+      if (!form.name.trim()) e.name = "Name is required";
+      if (form.pass!==form.pass2) e.pass2 = "Passwords don't match";
+    }
+    if (!form.email.includes("@")) e.email = "Enter a valid email";
+    if (form.pass.length<6) e.pass = "Password must be 6+ characters";
+    if (Object.keys(e).length) { setErrs(e); return; }
+    setLoading(true);
+    try {
+      if (mode==="signup") {
+        const existing = await supa.select("bloom_customers",`email=eq.${encodeURIComponent(form.email.toLowerCase())}`);
+        if (existing.length>0) { setErrs({email:"Email already registered"}); setLoading(false); return; }
+        const nc = { id:`c-${Date.now()}`, name:form.name, email:form.email.toLowerCase(), password_hash:simpleHash(form.pass), phone:form.phone };
+        const saved = await supa.insert("bloom_customers", nc);
+        if (!saved) { setErrs({email:"Sign up failed. Try again."}); setLoading(false); return; }
+        CustSession.save({ customerId:saved.id||nc.id });
+        onCustomerLogin(saved||nc);
+      } else {
+        const rows = await supa.select("bloom_customers",`email=eq.${encodeURIComponent(form.email.toLowerCase())}`);
+        if (rows.length===0) { setErrs({email:"No account with this email"}); setLoading(false); return; }
+        const c = rows[0];
+        if (c.password_hash!==simpleHash(form.pass)) { setErrs({pass:"Wrong password"}); setLoading(false); return; }
+        CustSession.save({ customerId:c.id });
+        onCustomerLogin(c);
+      }
+    } catch { setErrs({email:"Something went wrong. Check your connection."}); setLoading(false); }
+  };
+
+  return (
+    <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"radial-gradient(ellipse 70% 70% at 50% 0%,rgba(184,216,240,0.25) 0%,transparent 60%),var(--offwhite)",padding:"40px 16px"}}>
+      <div className="card fadeUp" style={{width:"100%",maxWidth:420,padding:44}}>
+        <div style={{textAlign:"center",marginBottom:28}}>
+          <div style={{display:"flex",justifyContent:"center",marginBottom:12}}><BloomSphere size={54}/></div>
+          <h2 style={{fontSize:26}}>{mode==="login"?"Welcome back":"Create your account"}</h2>
+          <p style={{color:"var(--ink-soft)",marginTop:6,fontSize:13}}>
+            {mode==="login"?"Log in to track your orders":"Shop across all Bloom stores with one account"}
+          </p>
+        </div>
+        <div style={{display:"flex",flexDirection:"column",gap:13}}>
+          {mode==="signup"&&<div><input className={`inp${errs.name?" err":""}`} name="name" placeholder="Your full name" value={form.name} onChange={h}/><Err k="name"/></div>}
+          <div><input className={`inp${errs.email?" err":""}`} name="email" type="email" placeholder="Email address" value={form.email} onChange={h}/><Err k="email"/></div>
+          {mode==="signup"&&<input className="inp" name="phone" placeholder="Phone number (optional)" value={form.phone} onChange={h}/>}
+          <div><input className={`inp${errs.pass?" err":""}`} name="pass" type="password" placeholder="Password (6+ characters)" value={form.pass} onChange={h}/><Err k="pass"/></div>
+          {mode==="signup"&&<div><input className={`inp${errs.pass2?" err":""}`} name="pass2" type="password" placeholder="Confirm password" value={form.pass2} onChange={h}/><Err k="pass2"/></div>}
+          <button className="btn-pink" style={{marginTop:4,padding:14,fontSize:14,borderRadius:12}} onClick={submit} disabled={loading}>
+            {loading?(mode==="login"?"Logging in…":"Creating account…"):mode==="login"?"Log In":"Create Account 🌸"}
+          </button>
+        </div>
+        <p style={{textAlign:"center",marginTop:18,fontSize:13,color:"var(--ink-soft)"}}>
+          {mode==="login"?"New here? ":"Already have an account? "}
+          <span style={{color:"var(--pink-btn)",cursor:"pointer",fontWeight:600}} onClick={()=>{setErrs({});navigate(mode==="login"?"/customer/signup":"/customer/login");}}>
+            {mode==="login"?"Create account":"Log in"}
+          </span>
+        </p>
+        <p style={{textAlign:"center",marginTop:12,fontSize:12,color:"var(--ink-soft)"}}>
+          Are you a business? <span style={{color:"var(--pink-btn)",cursor:"pointer",fontWeight:600}} onClick={()=>navigate("/login")}>Business login →</span>
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ─── CUSTOMER DASHBOARD ───────────────────────────────────────────────────────
+function CustomerDashboard({ customer, onLogout }) {
+  const navigate = useNavigate();
+  const [orders,  setOrders]  = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [users,   setUsers]   = useState([]);
+
+  useEffect(() => {
+    const load = async () => {
+      // Load all orders for this customer
+      const rows = await supa.select("bloom_orders", `customer_id=eq.${customer.id}&order=created_at.desc`);
+      setOrders(rows.map(o=>({...o, date:o.order_date})));
+      // Load store names
+      const storeIds = [...new Set(rows.map(o=>o.store_id))];
+      if (storeIds.length>0) {
+        const stores = await supa.select("bloom_users", `id=in.(${storeIds.join(",")})`);
+        setUsers(stores);
+      }
+      setLoading(false);
+    };
+    if (customer?.id) load();
+  }, [customer]);
+
+  const getStore = (storeId) => users.find(u=>u.id===storeId);
+
+  const reorder = (order) => {
+    const store = getStore(order.store_id);
+    if (store) navigate(`/store/${store.store_slug}`);
+  };
+
+  const totalSpent = orders.reduce((s,o)=>s+o.amount,0);
+
+  return (
+    <div style={{minHeight:"100vh",background:"var(--offwhite)"}}>
+      {/* Header */}
+      <div style={{background:"linear-gradient(135deg,var(--blue) 0%,var(--pink) 50%,var(--yellow) 100%)",padding:"48px 6vw 40px",position:"relative",overflow:"hidden"}}>
+        <div style={{position:"absolute",right:40,top:-40,width:180,height:180,borderRadius:"50%",background:"rgba(255,255,255,0.2)",filter:"blur(40px)",pointerEvents:"none"}}/>
+        <div style={{display:"flex",alignItems:"center",gap:20,flexWrap:"wrap"}}>
+          <div style={{width:72,height:72,borderRadius:"50%",background:"rgba(255,255,255,0.9)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:28,flexShrink:0}}>
+            {customer.name.charAt(0).toUpperCase()}
+          </div>
+          <div>
+            <h1 style={{fontSize:"clamp(24px,5vw,40px)"}}>Hey, {customer.name} 🌸</h1>
+            <p style={{color:"var(--ink-soft)",fontSize:14,marginTop:4}}>{customer.email}</p>
+          </div>
+        </div>
+        {/* Stats */}
+        <div style={{display:"flex",gap:24,marginTop:28,flexWrap:"wrap"}}>
+          {[
+            {label:"Orders Placed",  val:orders.length},
+            {label:"Total Spent",    val:`₹${totalSpent.toLocaleString()}`},
+            {label:"Stores Shopped", val:new Set(orders.map(o=>o.store_id)).size},
+          ].map((s,i)=>(
+            <div key={i} style={{background:"rgba(255,255,255,0.85)",borderRadius:14,padding:"14px 22px",minWidth:120}}>
+              <div style={{fontSize:24,fontFamily:"Playfair Display",fontWeight:700}}>{s.val}</div>
+              <div style={{fontSize:11,fontWeight:700,letterSpacing:"0.06em",color:"var(--ink-soft)",textTransform:"uppercase",marginTop:3}}>{s.label}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Orders */}
+      <div style={{padding:"40px 6vw",maxWidth:860,margin:"0 auto"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:28}}>
+          <h2 style={{fontSize:32}}>Your <em style={{color:"var(--pink-btn)"}}>Orders</em></h2>
+          <button className="btn-ghost" style={{display:"flex",alignItems:"center",gap:6,padding:"9px 18px"}} onClick={()=>navigate("/directory")}>
+            <Icon n="store" size={14}/> Browse Stores
+          </button>
+        </div>
+
+        {loading ? (
+          <div style={{textAlign:"center",padding:"60px 0",color:"var(--ink-soft)"}}>
+            <div style={{width:36,height:36,border:"3px solid var(--pink-btn)",borderTopColor:"transparent",borderRadius:"50%",animation:"spin 0.8s linear infinite",margin:"0 auto 16px"}}/>
+            <p>Loading your orders…</p>
+          </div>
+        ) : orders.length===0 ? (
+          <div style={{textAlign:"center",padding:"60px 0"}}>
+            <div style={{fontSize:56,marginBottom:16}}>🛍</div>
+            <h3 style={{fontSize:24,marginBottom:8}}>No orders yet</h3>
+            <p style={{color:"var(--ink-soft)",marginBottom:24}}>Browse stores and make your first purchase!</p>
+            <button className="btn-pink" style={{borderRadius:12,padding:"12px 28px"}} onClick={()=>navigate("/directory")}>
+              Browse Stores 🌸
+            </button>
+          </div>
+        ) : (
+          <div style={{display:"flex",flexDirection:"column",gap:16}}>
+            {orders.map(o=>{
+              const store = getStore(o.store_id);
+              return (
+                <div key={o.id} className="card" style={{padding:24}}>
+                  <div style={{display:"flex",gap:16,alignItems:"flex-start",flexWrap:"wrap"}}>
+                    {/* Store avatar */}
+                    <div style={{width:48,height:48,borderRadius:14,background:"linear-gradient(135deg,var(--pink),var(--yellow))",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                      <BloomSphere size={48}/>
+                    </div>
+                    <div style={{flex:1,minWidth:200}}>
+                      {/* Store + order ID */}
+                      <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",marginBottom:5}}>
+                        <span style={{fontWeight:700,fontSize:14}}>{store?.store_name||"Bloom Store"}</span>
+                        <span style={{fontSize:11,color:"var(--ink-soft)",fontFamily:"monospace"}}>{o.id}</span>
+                        <span className="bdg-green">✓ Confirmed</span>
+                      </div>
+                      {/* Items */}
+                      <p style={{fontSize:14,color:"var(--ink)",marginBottom:5}}>
+                        {(o.items||[]).map(i=>`${i.name} ×${i.qty}`).join(", ")||"Order"}
+                      </p>
+                      {/* Date + UPI ref */}
+                      <p style={{fontSize:12,color:"var(--ink-soft)"}}>
+                        {o.date||o.order_date}
+                        {o.upi_ref&&<span style={{marginLeft:8,fontFamily:"monospace",fontSize:11,background:"var(--surface)",padding:"1px 6px",borderRadius:4}}>Ref: {o.upi_ref}</span>}
+                      </p>
+                    </div>
+                    {/* Right: amount + actions */}
+                    <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:10}}>
+                      <div style={{fontFamily:"Playfair Display",fontSize:24,fontWeight:700,color:"var(--pink-btn)"}}>
+                        ₹{o.amount.toLocaleString()}
+                      </div>
+                      <div style={{display:"flex",gap:8}}>
+                        {o.proof&&(
+                          <a href={o.proof} target="_blank" rel="noreferrer"
+                            style={{background:"var(--blue)",color:"var(--ink)",border:"none",borderRadius:9,padding:"6px 12px",fontSize:12,fontWeight:700,cursor:"pointer",textDecoration:"none",display:"flex",alignItems:"center",gap:5}}>
+                            <Icon n="eye" size={13}/>Receipt
+                          </a>
+                        )}
+                        <button onClick={()=>reorder(o)}
+                          style={{background:"var(--pink)",color:"var(--pink-btn-h)",border:"none",borderRadius:9,padding:"6px 12px",fontSize:12,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:5}}>
+                          🔁 Reorder
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -1512,13 +1755,16 @@ function Cart({ cart, setCart, storeUser, onOrderPlaced }) {
 // ─── ROOT APP ─────────────────────────────────────────────────────────────────
 export default function App() {
   const navigate = useNavigate();
-  // ── State — seeded instantly with demo data, Supabase loads in bg ─────────
+  // ── Business session state ─────────────────────────────────────────────────
   const [session, setSession]         = useState(null);
   const [users, setUsers]             = useState([DEMO_USER]);
   const [allProducts, setAllProducts] = useState({ [DEMO_ID]: DEMO_PRODUCTS });
   const [allOrders, setAllOrders]     = useState({ [DEMO_ID]: DEMO_ORDERS });
   const [currentStore, setCurrentStore] = useState(DEMO_ID);
   const [cart, setCart]               = useState([]);
+
+  // ── Customer session state ─────────────────────────────────────────────────
+  const [customer, setCustomer] = useState(null); // logged-in customer account
 
   // ── Realtime: subscribes to new orders for logged-in business owner ───────
   const liveConnected = useRealtimeOrders(
@@ -1536,16 +1782,21 @@ export default function App() {
   useEffect(() => {
     const boot = async () => {
       try {
-        // Restore session
+        // Restore business session
         const savedSess = Session.load();
         if (savedSess?.userId) {
           await loadUserData(savedSess);
+        }
+        // Restore customer session
+        const savedCust = CustSession.load();
+        if (savedCust?.customerId) {
+          const rows = await supa.select("bloom_customers", `id=eq.${savedCust.customerId}`);
+          if (rows.length>0) setCustomer(rows[0]);
         }
         // Load all store users for directory
         const supaUsers = await supa.select("bloom_users","order=created_at.asc");
         if (supaUsers.length>0) {
           setUsers([DEMO_USER, ...supaUsers]);
-          // Load products for all stores (for directory counts)
           const prods = { [DEMO_ID]: DEMO_PRODUCTS };
           for (const u of supaUsers) {
             const p = await supa.select("bloom_products",`user_id=eq.${u.id}&order=created_at.asc`);
@@ -1600,6 +1851,19 @@ export default function App() {
     }));
   };
 
+  // ── Customer login handler ─────────────────────────────────────────────────
+  const handleCustomerLogin = (c) => {
+    setCustomer(c);
+    navigate("/customer/orders");
+  };
+
+  const handleCustomerLogout = () => {
+    CustSession.clear();
+    setCustomer(null);
+    navigate("/");
+  };
+  };
+
   const logout = async () => {
     Session.clear();
     setSession(null); navigate("/"); setCart([]);
@@ -1642,6 +1906,8 @@ export default function App() {
         live={liveConnected}
         onLogout={logout}
         cartCount={cartCount}
+        customer={customer}
+        onCustomerLogout={handleCustomerLogout}
       />
       <Routes>
         {/* ── Public routes ── */}
@@ -1657,23 +1923,25 @@ export default function App() {
           />
         }/>
         <Route path="/cart" element={
-          <Cart
-            cart={cart} setCart={setCart}
-            storeUser={users.find(u=>u.id===currentStore)||DEMO_USER}
-            onOrderPlaced={handleOrderPlaced}
-          />
+          customer
+            ? <Cart cart={cart} setCart={setCart} storeUser={users.find(u=>u.id===currentStore)||DEMO_USER} onOrderPlaced={handleOrderPlaced} customer={customer}/>
+            : <Navigate to="/customer/login" replace/>
+        }/>
+
+        {/* ── Customer account routes ── */}
+        <Route path="/customer/login"  element={<CustomerAuth mode="login"  setPage={p=>navigate(p)} onCustomerLogin={handleCustomerLogin}/>}/>
+        <Route path="/customer/signup" element={<CustomerAuth mode="signup" setPage={p=>navigate(p)} onCustomerLogin={handleCustomerLogin}/>}/>
+        <Route path="/customer/orders" element={
+          customer
+            ? <CustomerDashboard customer={customer} onLogout={handleCustomerLogout}/>
+            : <Navigate to="/customer/login" replace/>
         }/>
 
         {/* ── Each store gets its own public URL: /store/:slug ── */}
         <Route path="/store/:slug" element={
-          <StorefrontPage
-            users={users}
-            allProducts={allProducts}
-            allOrders={allOrders}
-            setAllOrders={setAllOrders}
-            cart={cart}
-            setCart={setCart}
-          />
+          customer
+            ? <StorefrontPage users={users} allProducts={allProducts} allOrders={allOrders} setAllOrders={setAllOrders} cart={cart} setCart={setCart} customer={customer}/>
+            : <Navigate to="/customer/login" replace/>
         }/>
 
         {/* ── Business dashboard routes (require login) ── */}
