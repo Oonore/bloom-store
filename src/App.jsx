@@ -733,6 +733,205 @@ function Nav({ page, setPage, session, orders, live, onLogout, cartCount, custom
   );
 }
 
+// ─── FOOTER ──────────────────────────────────────────────────────────────────
+function Footer() {
+  const navigate = useNavigate();
+  return (
+    <footer style={{background:"var(--ink)",color:"rgba(255,255,255,0.75)",padding:"48px 6vw 32px",fontFamily:"Plus Jakarta Sans,sans-serif"}}>
+      <div style={{maxWidth:1100,margin:"0 auto"}}>
+        <div style={{display:"flex",flexWrap:"wrap",gap:40,justifyContent:"space-between",marginBottom:40}}>
+          <div>
+            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
+              <BloomSphere size={28}/>
+              <span style={{fontFamily:"Playfair Display,serif",fontWeight:700,fontSize:20,color:"#fff"}}>Bloom</span>
+            </div>
+            <p style={{fontSize:13,lineHeight:1.8,maxWidth:260,color:"rgba(255,255,255,0.55)"}}>
+              India's simplest platform for small businesses to sell online and get paid instantly via UPI.
+            </p>
+          </div>
+          <div style={{display:"flex",gap:60,flexWrap:"wrap"}}>
+            <div>
+              <p style={{fontSize:11,fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",color:"rgba(255,255,255,0.4)",marginBottom:14}}>Company</p>
+              <div style={{display:"flex",flexDirection:"column",gap:10}}>
+                <button onClick={()=>navigate("/about")} style={{background:"none",border:"none",color:"rgba(255,255,255,0.7)",fontSize:13,cursor:"pointer",textAlign:"left",padding:0,transition:"color 0.2s"}} onMouseOver={e=>e.target.style.color="#fff"} onMouseOut={e=>e.target.style.color="rgba(255,255,255,0.7)"}>About</button>
+                <button onClick={()=>navigate("/privacy")} style={{background:"none",border:"none",color:"rgba(255,255,255,0.7)",fontSize:13,cursor:"pointer",textAlign:"left",padding:0,transition:"color 0.2s"}} onMouseOver={e=>e.target.style.color="#fff"} onMouseOut={e=>e.target.style.color="rgba(255,255,255,0.7)"}>Privacy Policy</button>
+              </div>
+            </div>
+            <div>
+              <p style={{fontSize:11,fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",color:"rgba(255,255,255,0.4)",marginBottom:14}}>Contact</p>
+              <div style={{display:"flex",flexDirection:"column",gap:10}}>
+                <a href="mailto:cntntisrighthere@gmail.com" style={{color:"rgba(255,255,255,0.7)",fontSize:13,textDecoration:"none"}} onMouseOver={e=>e.target.style.color="#fff"} onMouseOut={e=>e.target.style.color="rgba(255,255,255,0.7)"}>cntntisrighthere@gmail.com</a>
+                <a href="tel:+917048945301" style={{color:"rgba(255,255,255,0.7)",fontSize:13,textDecoration:"none"}} onMouseOver={e=>e.target.style.color="#fff"} onMouseOut={e=>e.target.style.color="rgba(255,255,255,0.7)"}>+91 70489 45301</a>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div style={{borderTop:"1px solid rgba(255,255,255,0.10)",paddingTop:24,display:"flex",flexWrap:"wrap",gap:12,justifyContent:"space-between",alignItems:"center"}}>
+          <p style={{fontSize:12,color:"rgba(255,255,255,0.35)"}}>© {new Date().getFullYear()} Anurag Ranga. All rights reserved.</p>
+          <p style={{fontSize:12,color:"rgba(255,255,255,0.35)"}}>Mumbai, India</p>
+        </div>
+      </div>
+    </footer>
+  );
+}
+
+// ─── PRIVACY POLICY ───────────────────────────────────────────────────────────
+function PrivacyPolicy() {
+  const navigate = useNavigate();
+  const Section = ({title, children}) => (
+    <div style={{marginBottom:36}}>
+      <h3 style={{fontSize:20,marginBottom:12,color:"var(--ink)"}}>{title}</h3>
+      <div style={{fontSize:15,color:"var(--ink-soft)",lineHeight:1.9}}>{children}</div>
+    </div>
+  );
+  return (
+    <div style={{minHeight:"100vh",background:"var(--offwhite)"}}>
+      <div style={{maxWidth:780,margin:"0 auto",padding:"60px 6vw 80px"}}>
+        <button onClick={()=>navigate("/")} style={{background:"none",border:"none",color:"var(--pink-btn)",fontSize:13,fontWeight:600,cursor:"pointer",marginBottom:32,display:"flex",alignItems:"center",gap:6,padding:0}}>← Back to Home</button>
+        <span className="pill" style={{marginBottom:20,display:"inline-flex"}}>Legal</span>
+        <h1 style={{fontSize:"clamp(32px,5vw,48px)",marginBottom:10}}>Privacy Policy</h1>
+        <p style={{fontSize:13,color:"var(--ink-soft)",marginBottom:48}}>Effective date: April 21, 2025 &nbsp;·&nbsp; Last updated: April 21, 2025</p>
+
+        <Section title="1. Who We Are">
+          <p>Bloom is an e-commerce platform that helps Indian small businesses set up online stores and accept UPI payments. Bloom is owned and operated by <strong>Anurag Ranga</strong>, based in Mumbai, India.</p>
+          <p style={{marginTop:10}}>Contact: <a href="mailto:cntntisrighthere@gmail.com" style={{color:"var(--pink-btn)"}}>cntntisrighthere@gmail.com</a> &nbsp;|&nbsp; +91 70489 45301</p>
+        </Section>
+
+        <Section title="2. Information We Collect">
+          <p><strong>For Business Accounts:</strong></p>
+          <ul style={{marginLeft:20,marginTop:8,display:"flex",flexDirection:"column",gap:6}}>
+            <li>Full name, email address, and password (hashed)</li>
+            <li>Store name and UPI ID</li>
+            <li>Product listings including names, descriptions, and images</li>
+          </ul>
+          <p style={{marginTop:14}}><strong>For Customer Accounts:</strong></p>
+          <ul style={{marginLeft:20,marginTop:8,display:"flex",flexDirection:"column",gap:6}}>
+            <li>Name, email address, and password (hashed)</li>
+            <li>Order history and purchase details</li>
+          </ul>
+          <p style={{marginTop:14}}><strong>Automatically Collected:</strong></p>
+          <ul style={{marginLeft:20,marginTop:8,display:"flex",flexDirection:"column",gap:6}}>
+            <li>Basic usage data (pages visited, actions taken) for improving the platform</li>
+          </ul>
+        </Section>
+
+        <Section title="3. How We Use Your Information">
+          <ul style={{marginLeft:20,display:"flex",flexDirection:"column",gap:8}}>
+            <li>To create and manage your account and store</li>
+            <li>To process and track orders</li>
+            <li>To send transactional email notifications (order updates, confirmations)</li>
+            <li>To improve the platform and fix issues</li>
+            <li>To comply with legal obligations</li>
+          </ul>
+        </Section>
+
+        <Section title="4. Payments">
+          <p>Bloom facilitates two types of payments:</p>
+          <ul style={{marginLeft:20,marginTop:8,display:"flex",flexDirection:"column",gap:8}}>
+            <li><strong>UPI Payments:</strong> Customers pay directly to the business owner's UPI ID. Bloom does not handle, store, or process UPI transactions. The payment goes directly from customer to business.</li>
+            <li><strong>Card / Wallet Payments:</strong> Processed by <strong>Cashfree Payments</strong>. Bloom does not store any card or banking details. Please refer to <a href="https://www.cashfree.com/privacy-policy/" target="_blank" rel="noreferrer" style={{color:"var(--pink-btn)"}}>Cashfree's Privacy Policy</a> for details on how they handle payment data.</li>
+          </ul>
+        </Section>
+
+        <Section title="5. Third-Party Services">
+          <p>We use the following third-party services to operate Bloom:</p>
+          <ul style={{marginLeft:20,marginTop:8,display:"flex",flexDirection:"column",gap:8}}>
+            <li><strong>Supabase</strong> — Database and file storage (images)</li>
+            <li><strong>Cashfree Payments</strong> — Payment gateway for cards and wallets</li>
+            <li><strong>MailerSend</strong> — Transactional email delivery</li>
+            <li><strong>Vercel</strong> — Frontend hosting</li>
+            <li><strong>Render</strong> — Backend hosting</li>
+          </ul>
+          <p style={{marginTop:12}}>Each of these services has their own privacy policy and data handling practices.</p>
+        </Section>
+
+        <Section title="6. Data Storage & Security">
+          <p>Your data is stored securely on Supabase servers. Passwords are never stored in plain text — they are hashed before storage. We take reasonable precautions to protect your data, but no system is 100% secure and we cannot guarantee absolute security.</p>
+        </Section>
+
+        <Section title="7. Data Retention">
+          <p>We retain your account data as long as your account is active. If you wish to delete your account and associated data, please contact us at <a href="mailto:cntntisrighthere@gmail.com" style={{color:"var(--pink-btn)"}}>cntntisrighthere@gmail.com</a> and we will process your request within 7 business days.</p>
+        </Section>
+
+        <Section title="8. Your Rights">
+          <p>You have the right to:</p>
+          <ul style={{marginLeft:20,marginTop:8,display:"flex",flexDirection:"column",gap:8}}>
+            <li>Access the personal data we hold about you</li>
+            <li>Request correction of inaccurate data</li>
+            <li>Request deletion of your data</li>
+            <li>Withdraw consent at any time</li>
+          </ul>
+          <p style={{marginTop:12}}>To exercise any of these rights, email us at <a href="mailto:cntntisrighthere@gmail.com" style={{color:"var(--pink-btn)"}}>cntntisrighthere@gmail.com</a>.</p>
+        </Section>
+
+        <Section title="9. Cookies">
+          <p>Bloom uses minimal cookies and local storage solely to keep you logged in and maintain your session. We do not use cookies for advertising or tracking across other websites.</p>
+        </Section>
+
+        <Section title="10. Changes to This Policy">
+          <p>We may update this Privacy Policy from time to time. When we do, we will update the "Last updated" date at the top. Continued use of Bloom after changes constitutes your acceptance of the updated policy.</p>
+        </Section>
+
+        <Section title="11. Contact Us">
+          <p>For any privacy-related questions or concerns, please reach out to:</p>
+          <div style={{marginTop:12,padding:"20px 24px",background:"var(--white)",borderRadius:14,border:"1px solid var(--border)"}}>
+            <p><strong>Anurag Ranga</strong></p>
+            <p style={{marginTop:4}}>Mumbai, India</p>
+            <p style={{marginTop:4}}>Email: <a href="mailto:cntntisrighthere@gmail.com" style={{color:"var(--pink-btn)"}}>cntntisrighthere@gmail.com</a></p>
+            <p style={{marginTop:4}}>Phone: <a href="tel:+917048945301" style={{color:"var(--pink-btn)"}}>+91 70489 45301</a></p>
+          </div>
+        </Section>
+      </div>
+      <Footer/>
+    </div>
+  );
+}
+
+// ─── ABOUT ────────────────────────────────────────────────────────────────────
+function About() {
+  const navigate = useNavigate();
+  return (
+    <div style={{minHeight:"100vh",background:"var(--offwhite)"}}>
+      <div style={{maxWidth:780,margin:"0 auto",padding:"60px 6vw 80px"}}>
+        <button onClick={()=>navigate("/")} style={{background:"none",border:"none",color:"var(--pink-btn)",fontSize:13,fontWeight:600,cursor:"pointer",marginBottom:32,display:"flex",alignItems:"center",gap:6,padding:0}}>← Back to Home</button>
+        <span className="pill" style={{marginBottom:20,display:"inline-flex"}}>Our Story</span>
+        <h1 style={{fontSize:"clamp(32px,5vw,52px)",marginBottom:24}}>About <em style={{color:"var(--pink-btn)"}}>Bloom</em></h1>
+
+        <div style={{fontSize:17,color:"var(--ink-soft)",lineHeight:1.9,marginBottom:48}}>
+          <p>Hi, I'm <strong style={{color:"var(--ink)"}}>Anurag</strong> 👋</p>
+          <p style={{marginTop:16}}>I started Bloom with one goal in mind — to help as many small businesses as possible grow and prosper online. India has millions of talented entrepreneurs, home bakers, artisans, and local shop owners who deserve a simple, powerful way to sell online without jumping through hoops or paying hefty commissions.</p>
+          <p style={{marginTop:16}}>Bloom is built for them. No KYC. No commission. No complicated setup. Just a beautiful store link, UPI payments, and customers — in minutes.</p>
+          <p style={{marginTop:16}}>We're just getting started. We'll keep adding new features and improving the platform based on what you tell us you need. This is your platform, and we're here to serve you.</p>
+        </div>
+
+        <div className="card" style={{padding:"32px 36px",marginBottom:48,background:"linear-gradient(135deg,rgba(245,198,216,0.25) 0%,rgba(184,216,240,0.20) 100%)"}}>
+          <h2 style={{fontSize:26,marginBottom:20}}>Our mission</h2>
+          <p style={{fontSize:16,color:"var(--ink-soft)",lineHeight:1.9}}>To be India's simplest and most accessible platform for small businesses — empowering every shop owner, every home baker, every local artisan to reach more customers and grow with confidence.</p>
+        </div>
+
+        <h2 style={{fontSize:26,marginBottom:24}}>Get in touch</h2>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:16}}>
+          {[
+            {emoji:"📍",label:"Location",value:"Mumbai, India"},
+            {emoji:"📧",label:"Email",value:"cntntisrighthere@gmail.com",href:"mailto:cntntisrighthere@gmail.com"},
+            {emoji:"📞",label:"Phone",value:"+91 70489 45301",href:"tel:+917048945301"},
+          ].map((item,i)=>(
+            <div key={i} className="card" style={{padding:"20px 24px"}}>
+              <div style={{fontSize:24,marginBottom:8}}>{item.emoji}</div>
+              <p style={{fontSize:11,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",color:"var(--ink-soft)",marginBottom:6}}>{item.label}</p>
+              {item.href
+                ? <a href={item.href} style={{fontSize:14,color:"var(--pink-btn)",fontWeight:600,textDecoration:"none"}}>{item.value}</a>
+                : <p style={{fontSize:14,fontWeight:600}}>{item.value}</p>
+              }
+            </div>
+          ))}
+        </div>
+      </div>
+      <Footer/>
+    </div>
+  );
+}
+
 // ─── LANDING ─────────────────────────────────────────────────────────────────
 function Landing({ setPage, goToDemo }) {
   return (
@@ -778,6 +977,7 @@ function Landing({ setPage, goToDemo }) {
         <p style={{fontSize:14,color:"var(--ink-soft)",marginBottom:28}}>Free forever · UPI payments · No commission</p>
         <button className="btn-pink" style={{fontSize:15,padding:"15px 44px"}} onClick={()=>setPage("signup")}>Create My Store</button>
       </section>
+      <Footer/>
     </div>
   );
 }
@@ -2233,6 +2433,10 @@ export default function App() {
             ? <Settings user={currentUser} onUserUpdated={handleUserUpdated}/>
             : <Navigate to="/login" replace/>
         }/>
+
+        {/* ── Legal & info pages ── */}
+        <Route path="/privacy" element={<PrivacyPolicy/>}/>
+        <Route path="/about"   element={<About/>}/>
 
         {/* ── Catch-all ── */}
         <Route path="*" element={<Navigate to="/" replace/>}/>
